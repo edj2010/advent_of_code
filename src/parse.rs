@@ -4,14 +4,6 @@ use std::{
     str::Chars,
 };
 
-pub enum TokenTree {
-    Integer(isize),
-    Float(f64),
-    String(String),
-    Char(char),
-    List(Vec<TokenTree>),
-}
-
 pub enum ParseError {
     UnexpectedChar(char),
     EndOfString,
