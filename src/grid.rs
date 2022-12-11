@@ -93,48 +93,48 @@ impl Mul<isize> for GridPointDelta {
     }
 }
 
-const NORTH: GridPointDelta = GridPointDelta {
+pub const NORTH: GridPointDelta = GridPointDelta {
     row_delta: 0,
     col_delta: -1,
 };
-const EAST: GridPointDelta = GridPointDelta {
+pub const EAST: GridPointDelta = GridPointDelta {
     row_delta: 1,
     col_delta: 0,
 };
-const SOUTH: GridPointDelta = GridPointDelta {
+pub const SOUTH: GridPointDelta = GridPointDelta {
     row_delta: 0,
     col_delta: 1,
 };
-const WEST: GridPointDelta = GridPointDelta {
+pub const WEST: GridPointDelta = GridPointDelta {
     row_delta: -1,
     col_delta: 0,
 };
 
-const NORTHEAST: GridPointDelta = GridPointDelta {
+pub const NORTHEAST: GridPointDelta = GridPointDelta {
     row_delta: 1,
     col_delta: -1,
 };
-const SOUTHEAST: GridPointDelta = GridPointDelta {
+pub const SOUTHEAST: GridPointDelta = GridPointDelta {
     row_delta: 1,
     col_delta: 1,
 };
-const SOUTHWEST: GridPointDelta = GridPointDelta {
+pub const SOUTHWEST: GridPointDelta = GridPointDelta {
     row_delta: -1,
     col_delta: 1,
 };
-const NORTHWEST: GridPointDelta = GridPointDelta {
+pub const NORTHWEST: GridPointDelta = GridPointDelta {
     row_delta: -1,
     col_delta: -1,
 };
 
 #[allow(dead_code)]
-const PLUS_ADJACENT: [GridPointDelta; 4] = [NORTH, EAST, SOUTH, WEST];
+pub const PLUS_ADJACENT: [GridPointDelta; 4] = [NORTH, EAST, SOUTH, WEST];
 
 #[allow(dead_code)]
-const DIAG_ADJACENT: [GridPointDelta; 4] = [NORTHEAST, SOUTHEAST, SOUTHWEST, NORTHWEST];
+pub const DIAG_ADJACENT: [GridPointDelta; 4] = [NORTHEAST, SOUTHEAST, SOUTHWEST, NORTHWEST];
 
 #[allow(dead_code)]
-const ADJACENT: [GridPointDelta; 8] = [
+pub const ADJACENT: [GridPointDelta; 8] = [
     NORTH, NORTHEAST, EAST, SOUTHEAST, SOUTH, SOUTHWEST, WEST, NORTHWEST,
 ];
 
