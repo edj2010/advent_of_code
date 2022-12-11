@@ -157,6 +157,12 @@ impl<T: Clone> Grid<T> {
     ) -> Option<Self> {
         Self::from(v.into_iter().flat_map(|i| i.into_iter()), rows, cols)
     }
+
+    pub fn of_vec_of_vecs(v: Vec<Vec<T>>) -> Option<Self> {
+        let rows = v.len();
+        let cols = v[0].len();
+        Self::of_list_of_lists(v, rows, cols)
+    }
 }
 
 impl<T> Grid<T> {
