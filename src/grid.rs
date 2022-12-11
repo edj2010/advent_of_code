@@ -1,3 +1,5 @@
+use std::error::Error;
+use std::fmt::Display;
 use std::ops::{Add, Mul, Neg};
 
 /////////////
@@ -9,6 +11,12 @@ use std::ops::{Add, Mul, Neg};
 pub struct GridPoint {
     row: usize,
     col: usize,
+}
+
+impl Display for GridPoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}, {})", self.row, self.col)
+    }
 }
 
 impl GridPoint {
@@ -42,6 +50,12 @@ impl GridPoint {
 pub struct GridPointDelta {
     row_delta: isize,
     col_delta: isize,
+}
+
+impl Display for GridPointDelta {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}, {})", self.row_delta, self.row_delta)
+    }
 }
 
 impl GridPointDelta {
@@ -181,6 +195,49 @@ impl GridPoint {
 }
 
 ////////////
+/// Index Out Of Bounds error
+///
+/// error type for trying to index a part of the grid that doesn't exist
+////////////
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct IndexOutOfBoundsError {
+    rows: usize,
+    cols: usize,
+    attempted: GridPoint,
+}
+
+impl IndexOutOfBoundsError {
+    #[inline]
+    fn new(rows: usize, cols: usize, attempted: GridPoint) -> Self {
+        IndexOutOfBoundsError {
+            rows,
+            cols,
+            attempted,
+        }
+    }
+
+    #[inline]
+    fn err<T>(rows: usize, cols: usize, attempted: GridPoint) -> IndexResult<T> {
+        Result::Err(IndexOutOfBoundsError::new(rows, cols, attempted))
+    }
+}
+
+impl Display for IndexOutOfBoundsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "attempted to access {} in grid with {} rows and {} cols",
+            self.attempted, self.rows, self.cols,
+        )
+    }
+}
+
+impl Error for IndexOutOfBoundsError {}
+
+type IndexResult<T> = Result<T, IndexOutOfBoundsError>;
+
+////////////
 /// Grid
 ///
 /// simple datastructure for holding a grid of values
@@ -193,6 +250,7 @@ pub struct Grid<T> {
 }
 
 impl<T: Clone> Clone for Grid<T> {
+    #[inline]
     fn clone(&self) -> Self {
         Grid {
             rows: self.rows,
@@ -252,18 +310,33 @@ impl<T> Grid<T> {
         self.rows
     }
 
-    pub fn get(&self, point: GridPoint) -> Option<&T> {
+    pub fn get(&self, point: GridPoint) -> IndexResult<&T> {
         if point.row > self.rows || point.col > self.cols {
-            return None;
+            return IndexOutOfBoundsError::err(self.rows, self.cols, point);
         }
-        self.grid.get(point.as_arr_idx(self.cols))
+        self.grid
+            .get(point.as_arr_idx(self.cols))
+            .ok_or(IndexOutOfBoundsError::new(self.rows, self.cols, point))
     }
 
-    pub fn get_mut(&mut self, point: GridPoint) -> Option<&mut T> {
+    pub fn get_mut(&mut self, point: GridPoint) -> IndexResult<&mut T> {
         if point.row > self.rows || point.col > self.cols {
-            return None;
+            return IndexOutOfBoundsError::err(self.rows, self.cols, point);
         }
-        self.grid.get_mut(point.as_arr_idx(self.cols))
+        self.grid
+            .get_mut(point.as_arr_idx(self.cols))
+            .ok_or(IndexOutOfBoundsError::new(self.rows, self.cols, point))
+    }
+
+    pub fn set(&mut self, point: GridPoint, value: T) -> IndexResult<()> {
+        if point.row > self.rows || point.col > self.cols {
+            return IndexOutOfBoundsError::err(self.rows, self.cols, point);
+        }
+        *self
+            .grid
+            .get_mut(point.as_arr_idx(self.cols))
+            .ok_or(IndexOutOfBoundsError::new(self.rows, self.cols, point))? = value;
+        Ok(())
     }
 }
 
@@ -285,7 +358,7 @@ mod tests {
             3,
         )
         .unwrap();
-        assert_eq!(grid.get(grid_point), Some(&'5'));
+        assert_eq!(grid.get(grid_point), Ok(&'5'));
     }
 
     #[test]
