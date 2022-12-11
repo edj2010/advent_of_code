@@ -1,4 +1,4 @@
-use std::ops::{Add, Neg};
+use std::ops::{Add, Mul, Neg};
 
 /////////////
 /// Grid Point
@@ -51,6 +51,13 @@ impl GridPointDelta {
             col_delta,
         }
     }
+
+    pub fn zero() -> Self {
+        GridPointDelta {
+            row_delta: 0,
+            col_delta: 0,
+        }
+    }
 }
 
 impl Neg for GridPointDelta {
@@ -71,6 +78,17 @@ impl Add<Self> for GridPointDelta {
         GridPointDelta {
             row_delta: self.row_delta + rhs.row_delta,
             col_delta: self.col_delta + rhs.col_delta,
+        }
+    }
+}
+
+impl Mul<isize> for GridPointDelta {
+    type Output = Self;
+
+    fn mul(self, rhs: isize) -> Self::Output {
+        GridPointDelta {
+            row_delta: self.row_delta * rhs,
+            col_delta: self.col_delta * rhs,
         }
     }
 }
