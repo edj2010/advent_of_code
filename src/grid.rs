@@ -166,6 +166,14 @@ impl<T: Clone> Grid<T> {
 }
 
 impl<T> Grid<T> {
+    pub fn cols(&self) -> usize {
+        self.cols
+    }
+
+    pub fn rows(&self) -> usize {
+        self.rows
+    }
+
     pub fn get(&self, point: GridPoint) -> Option<&T> {
         if point.row > self.rows || point.col > self.cols {
             return None;
