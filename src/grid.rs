@@ -5,7 +5,7 @@ use std::ops::{Add, Mul, Neg};
 ///
 /// datastructure for indexing a grid
 /////////////
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GridPoint {
     row: usize,
     col: usize,
@@ -38,7 +38,7 @@ impl GridPoint {
 /// datastructure for adding to/subtracting from grid points
 ////////////
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GridPointDelta {
     row_delta: isize,
     col_delta: isize,
@@ -139,6 +139,48 @@ pub const ADJACENT: [GridPointDelta; 8] = [
 ];
 
 ////////////
+/// Grid Point Iterators
+///
+/// helpful iterators for stepping over the grid
+////////////
+
+pub struct GridPointIterator {
+    next: Option<GridPoint>,
+    traverse_by: GridPointDelta,
+    rows: usize,
+    cols: usize,
+}
+
+impl Iterator for GridPointIterator {
+    type Item = GridPoint;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(next) = self.next {
+            self.next = next.add(self.traverse_by, self.rows, self.cols);
+            Some(next)
+        } else {
+            None
+        }
+    }
+}
+
+impl GridPoint {
+    pub fn traverse_by(
+        self,
+        traverse_by: GridPointDelta,
+        rows: usize,
+        cols: usize,
+    ) -> GridPointIterator {
+        GridPointIterator {
+            next: Some(self),
+            traverse_by,
+            rows,
+            cols,
+        }
+    }
+}
+
+////////////
 /// Grid
 ///
 /// simple datastructure for holding a grid of values
@@ -149,6 +191,24 @@ pub struct Grid<T> {
     cols: usize,
     grid: Vec<T>,
 }
+
+impl<T: Clone> Clone for Grid<T> {
+    fn clone(&self) -> Self {
+        Grid {
+            rows: self.rows,
+            cols: self.cols,
+            grid: self.grid.clone(),
+        }
+    }
+}
+
+impl<T: PartialEq> PartialEq for Grid<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.rows == other.rows && self.cols == other.cols && self.grid == other.grid
+    }
+}
+
+impl<T: Eq> Eq for Grid<T> {}
 
 impl<T: Clone> Grid<T> {
     pub fn init(init: T, rows: usize, cols: usize) -> Self {
@@ -226,6 +286,24 @@ mod tests {
         )
         .unwrap();
         assert_eq!(grid.get(grid_point), Some(&'5'));
+    }
+
+    #[test]
+    fn grid_iter_test() {
+        let grid_point: GridPoint = GridPoint::new(1, 1);
+        let step_by = SOUTH;
+
+        assert_eq!(
+            grid_point
+                .traverse_by(step_by, 5, 5)
+                .collect::<Vec<GridPoint>>(),
+            vec![
+                GridPoint { row: 1, col: 1 },
+                GridPoint { row: 1, col: 2 },
+                GridPoint { row: 1, col: 3 },
+                GridPoint { row: 1, col: 4 }
+            ]
+        );
     }
 }
 
