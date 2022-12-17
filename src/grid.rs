@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use std::ops::{Add, Mul, Neg};
 
 /////////////
@@ -249,6 +249,15 @@ pub struct Grid<T> {
     grid: Vec<T>,
 }
 
+impl<T> Debug for Grid<T>
+where
+    T: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {} {:?}", self.rows, self.cols, self.grid)
+    }
+}
+
 impl<T: Clone> Clone for Grid<T> {
     #[inline]
     fn clone(&self) -> Self {
@@ -337,6 +346,10 @@ impl<T> Grid<T> {
             .get_mut(point.as_arr_idx(self.cols))
             .ok_or(IndexOutOfBoundsError::new(self.rows, self.cols, point))? = value;
         Ok(())
+    }
+
+    pub fn into_iter(self) -> std::vec::IntoIter<T> {
+        self.grid.into_iter()
     }
 }
 

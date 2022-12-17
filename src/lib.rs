@@ -1,5 +1,6 @@
 #![feature(try_trait_v2)]
 #![feature(generic_const_exprs)]
+#![allow(incomplete_features)]
 
 pub mod grid;
 pub mod parse;
