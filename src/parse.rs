@@ -677,7 +677,7 @@ pub mod parsers {
     }
 
     #[inline]
-    pub fn list<'a, P>(p: P, sep: &'a str) -> parsers_internal::List<'a, P> {
+    pub fn list<'a, P>(sep: &'a str, p: P) -> parsers_internal::List<'a, P> {
         parsers_internal::List::new(sep, p)
     }
 
@@ -870,7 +870,7 @@ mod tests {
     #[test]
     fn list() {
         assert_eq!(
-            parsers::list(parsers::chars(|c: char| c.is_numeric()), ",")
+            parsers::list(",", parsers::chars(|c: char| c.is_numeric()))
                 .parse("1,2,3,4,5")
                 .finish()
                 .map(|v| v.collect::<Vec<char>>()),
@@ -878,9 +878,9 @@ mod tests {
         );
         assert_eq!(
             parsers::list(
+                ",",
                 parsers::chars(|c: char| c.is_numeric())
-                    .map(|c: char| c.to_string().parse::<usize>().unwrap()),
-                ","
+                    .map(|c: char| c.to_string().parse::<usize>().unwrap())
             )
             .parse("1,2,3,4,5")
             .finish()
@@ -888,8 +888,8 @@ mod tests {
             Ok(vec![1, 2, 3, 4, 5])
         );
         let parser = parsers::list(
-            parsers::any().map(|s: String| s.parse::<usize>().unwrap()),
             ",",
+            parsers::any().map(|s: String| s.parse::<usize>().unwrap()),
         );
         assert_eq!(
             parser
