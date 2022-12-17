@@ -1,14 +1,16 @@
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ParseError {
     UnexpectedChar(char),
     UnmatchedTag(String),
     Generic(String),
-    RemainingUnparsed(String),
+    RemainingUnparsed,
     XorBothTrue,
     EndOfString,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ParseState<'a, T> {
-    Err(ParseError),
+    Err { error: ParseError, rest: &'a str },
     Ok { result: T, rest: &'a str },
 }
 
@@ -21,23 +23,35 @@ pub enum ParseState<'a, T> {
 #[allow(dead_code)]
 impl<'a, T> ParseState<'a, T> {
     #[inline]
-    fn error_unexpected_char(c: char) -> Self {
-        Self::Err(ParseError::UnexpectedChar(c))
+    fn error_unexpected_char(c: char, rest: &'a str) -> Self {
+        Self::Err {
+            error: ParseError::UnexpectedChar(c),
+            rest,
+        }
     }
 
     #[inline]
-    fn error_generic(err: &str) -> Self {
-        Self::Err(ParseError::Generic(err.to_owned()))
+    fn error_generic(err: &str, rest: &'a str) -> Self {
+        Self::Err {
+            error: ParseError::Generic(err.to_owned()),
+            rest,
+        }
     }
 
     #[inline]
-    fn error_end_of_string() -> Self {
-        Self::Err(ParseError::EndOfString)
+    fn error_end_of_string(rest: &'a str) -> Self {
+        Self::Err {
+            error: ParseError::EndOfString,
+            rest,
+        }
     }
 
     #[inline]
-    fn error_unmatched_tag(s: &str) -> Self {
-        Self::Err(ParseError::UnmatchedTag(s.to_owned()))
+    fn error_unmatched_tag(s: &str, rest: &'a str) -> Self {
+        Self::Err {
+            error: ParseError::UnmatchedTag(s.to_owned()),
+            rest,
+        }
     }
 }
 
@@ -53,24 +67,21 @@ impl<'a, T> ParseState<'a, T> {
     }
 
     #[inline]
-    fn error(err: ParseError) -> Self {
-        ParseState::Err(err)
+    fn error(error: ParseError, rest: &'a str) -> Self {
+        ParseState::Err { error, rest }
     }
 
     #[inline]
     fn and_then<U, F: FnOnce(T, &'a str) -> ParseState<'a, U>>(self, f: F) -> ParseState<'a, U> {
         match self {
             ParseState::Ok { result, rest } => f(result, rest),
-            ParseState::Err(err) => ParseState::Err(err),
+            ParseState::Err { error, rest } => ParseState::Err { error, rest },
         }
     }
 
     #[inline]
-    fn and<'b, U>(self, other: ParseState<'b, U>) -> ParseState<'b, U> {
-        match self {
-            ParseState::Ok { .. } => other,
-            ParseState::Err(err) => ParseState::error(err),
-        }
+    fn and<U>(self, other: ParseState<'a, U>) -> ParseState<'a, U> {
+        self.and_then(|_, _| other)
     }
 
     #[inline]
@@ -85,10 +96,10 @@ impl<'a, T> ParseState<'a, T> {
     fn xor(self, other: Self) -> Self {
         match self {
             ParseState::Ok { .. } => match other {
-                ParseState::Ok { .. } => ParseState::error(ParseError::XorBothTrue),
-                ParseState::Err(..) => self,
+                ParseState::Ok { rest, .. } => ParseState::error(ParseError::XorBothTrue, rest),
+                ParseState::Err { .. } => self,
             },
-            ParseState::Err(..) => other,
+            ParseState::Err { .. } => other,
         }
     }
 }
@@ -99,18 +110,18 @@ impl<'a, T> ParseState<'a, T> {
 ///
 ///////
 
-impl<'a, T> ParseState<'a, T> {
-    pub fn fail(err: &str) -> ParseState<'a, T> {
-        Self::error_generic(err)
-    }
+/*
+   pub fn fail(err: &str) -> ParseState<'a, T> {
+       Self::error_generic(err)
+   }
+*/
 
-    pub fn finish(self) -> Result<T, ParseError> {
+impl<'a, T> ParseState<'a, T> {
+    pub fn finish(self) -> Result<T, (ParseError, &'a str)> {
         match self {
-            ParseState::Err(err) => Err(err),
+            ParseState::Err { error, rest } => Err((error, rest)),
             ParseState::Ok { result, rest: "" } => Ok(result),
-            ParseState::Ok { result: _, rest } => {
-                Err(ParseError::RemainingUnparsed(rest.to_owned()))
-            }
+            ParseState::Ok { result: _, rest } => Err((ParseError::RemainingUnparsed, rest)),
         }
     }
 }
@@ -122,7 +133,6 @@ impl<'a, T> ParseState<'a, T> {
 ///////
 
 mod parsers_internal {
-    use std::collections::VecDeque;
     use std::convert::Infallible;
 
     use super::{parsers, ParseState, Parser};
@@ -164,36 +174,33 @@ mod parsers_internal {
     impl<'b> Parser for Fail<'b> {
         type Output = Infallible;
 
-        fn parse<'a>(self, _: &'a str) -> ParseState<'a, Self::Output> {
-            ParseState::error_generic(&self.0)
+        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
+            ParseState::error_generic(&self.0, s)
         }
     }
 
     // Chars
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-    pub struct Chars<F>(F);
+    pub struct Chars<F: Fn(char) -> bool>(F);
 
-    impl<F> Chars<F> {
+    impl<F: Fn(char) -> bool> Chars<F> {
         pub fn new(f: F) -> Self {
             Chars(f)
         }
     }
 
-    impl<F> Parser for Chars<F>
-    where
-        F: Fn(char) -> bool,
-    {
+    impl<F: Fn(char) -> bool> Parser for Chars<F> {
         type Output = char;
 
         fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
-            let mut s = s.chars();
-            match s.next() {
-                None => ParseState::error_end_of_string(),
+            let mut cs = s.chars();
+            match cs.next() {
+                None => ParseState::error_end_of_string(s),
                 Some(c) => {
                     if (self.0)(c) {
-                        ParseState::ok(c, s.as_str())
+                        ParseState::ok(c, cs.as_str())
                     } else {
-                        ParseState::error_unexpected_char(c)
+                        ParseState::error_unexpected_char(c, s)
                     }
                 }
             }
@@ -214,17 +221,7 @@ mod parsers_internal {
         type Output = char;
 
         fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
-            let mut s = s.chars();
-            match s.next() {
-                None => ParseState::error_end_of_string(),
-                Some(c) => {
-                    if self.0 == c {
-                        ParseState::ok(c, s.as_str())
-                    } else {
-                        ParseState::error_unexpected_char(c)
-                    }
-                }
-            }
+            parsers::chars(|c| c == self.0).parse(s)
         }
     }
 
@@ -243,7 +240,7 @@ mod parsers_internal {
 
         fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
             match s.strip_prefix(self.0) {
-                None => ParseState::error_unmatched_tag(self.0),
+                None => ParseState::error_unmatched_tag(self.0, s),
                 Some(s) => ParseState::ok(self.0, s),
             }
         }
@@ -452,6 +449,113 @@ mod parsers_internal {
         }
     }
 
+    // Many
+    #[derive(Debug, PartialEq, Eq, Clone)]
+    pub struct ManyIter<T> {
+        contents: Vec<T>,
+    }
+
+    impl<T> ManyIter<T> {
+        fn empty() -> Self {
+            ManyIter { contents: vec![] }
+        }
+
+        fn singleton(t: T) -> Self {
+            ManyIter { contents: vec![t] }
+        }
+
+        fn extended(mut self, t: T) -> Self {
+            self.contents.push(t);
+            self
+        }
+    }
+
+    impl<T> Iterator for ManyIter<T> {
+        type Item = T;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            self.contents.pop()
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    pub struct Many<P> {
+        p: P,
+    }
+
+    impl<P> Many<P> {
+        pub fn new(p: P) -> Self {
+            Many { p }
+        }
+    }
+
+    impl<T, P> Parser for Many<P>
+    where
+        P: Parser<Output = T> + Clone,
+    {
+        type Output = ManyIter<T>;
+
+        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
+            let ParseState::Ok{result, rest} = self.p.clone().parse(s) else {
+                return ParseState::ok(ManyIter::empty(), s);
+            };
+            let ParseState::Ok {
+                result: many, rest
+            } = self.parse(rest)
+            else {
+                return ParseState::error_generic("Many parser should not fail", s)
+            };
+            ParseState::ok(many.extended(result), rest)
+        }
+    }
+
+    // String
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    pub struct ManyChars<F: Fn(char) -> bool>(F);
+
+    impl<F: Fn(char) -> bool + Clone> ManyChars<F> {
+        pub fn new(f: F) -> Self {
+            ManyChars(f)
+        }
+    }
+
+    impl<F: Fn(char) -> bool + Clone> Parser for ManyChars<F> {
+        type Output = String;
+
+        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
+            parsers::many(parsers::chars(self.0))
+                .map(|v: ManyIter<char>| v.collect::<String>())
+                .parse(s)
+        }
+    }
+
+    // Number
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    pub struct Number<'a>(&'a str);
+
+    impl<'a> Number<'a> {
+        pub fn new(seps: &'a str) -> Self {
+            Number(seps)
+        }
+    }
+
+    impl<'b> Parser for Number<'b> {
+        type Output = usize;
+
+        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
+            parsers::many(parsers::chars(|c: char| {
+                c.is_numeric() || self.0.contains(c)
+            }))
+            .map(|v: ManyIter<char>| {
+                v.filter(|c: &char| c.is_numeric())
+                    .collect::<String>()
+                    .parse::<usize>()
+                    .unwrap()
+            })
+            .parse(s)
+        }
+    }
+
     // List
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     pub struct List<'a, P> {
@@ -469,24 +573,43 @@ mod parsers_internal {
     where
         P: Parser<Output = T> + Clone,
     {
-        type Output = VecDeque<T>;
+        type Output = ManyIter<T>;
 
         fn parse<'b>(self, s: &'b str) -> ParseState<'b, Self::Output> {
             let ParseState::Ok{result, rest} = self.p.clone().parse(s) else {
-                return ParseState::ok(VecDeque::new(), s);
+                return ParseState::ok(ManyIter::empty(), s);
             };
             let ParseState::Ok{rest, ..} = parsers::tag(self.sep).parse(rest) else {
-                return ParseState::ok(VecDeque::from([result]), rest);
+                return ParseState::ok(ManyIter::singleton(result), rest);
             };
             let ParseState::Ok {
-                result: mut list, rest
+                result: list, rest
             } = self.parse(rest)
             else {
-                return ParseState::error_generic("List parser should not fail")
+                return ParseState::error_generic("List parser should not fail", s)
             };
+            ParseState::ok(list.extended(result), rest)
+        }
+    }
 
-            list.push_front(result);
-            ParseState::ok(list, rest)
+    // Line
+    pub struct Line(char);
+
+    impl Line {
+        pub fn new(terminator: char) -> Self {
+            Line(terminator)
+        }
+    }
+
+    impl Parser for Line {
+        type Output = String;
+
+        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
+            parsers::many(parsers::chars(|c: char| c != self.0))
+                .map(|v: ManyIter<char>| v.collect::<String>())
+                .and_then(parsers::char(self.0))
+                .map(|(s, _)| s)
+                .parse(s)
         }
     }
 }
@@ -504,7 +627,7 @@ pub mod parsers {
     }
 
     #[inline]
-    pub fn chars<F>(f: F) -> parsers_internal::Chars<F> {
+    pub fn chars<F: Fn(char) -> bool>(f: F) -> parsers_internal::Chars<F> {
         parsers_internal::Chars::new(f)
     }
 
@@ -534,8 +657,33 @@ pub mod parsers {
     }
 
     #[inline]
+    pub fn many<P>(p: P) -> parsers_internal::Many<P> {
+        parsers_internal::Many::new(p)
+    }
+
+    #[inline]
+    pub fn many_chars<F: Fn(char) -> bool + Clone>(f: F) -> parsers_internal::ManyChars<F> {
+        parsers_internal::ManyChars::new(f)
+    }
+
+    #[inline]
+    pub fn number<'a>() -> parsers_internal::Number<'a> {
+        parsers_internal::Number::new("")
+    }
+
+    #[inline]
+    pub fn number_with_seps<'a>(sep_chars: &'a str) -> parsers_internal::Number<'a> {
+        parsers_internal::Number::new(sep_chars)
+    }
+
+    #[inline]
     pub fn list<'a, P>(p: P, sep: &'a str) -> parsers_internal::List<'a, P> {
         parsers_internal::List::new(sep, p)
+    }
+
+    #[inline]
+    pub fn line(terminator: char) -> parsers_internal::Line {
+        parsers_internal::Line::new(terminator)
     }
 }
 
@@ -567,5 +715,196 @@ pub trait Parser: Sized {
     #[inline]
     fn map<F>(self, f: F) -> parsers_internal::Map<Self, F> {
         parsers_internal::Map::new(self, f)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn pure() {
+        assert_eq!(parsers::pure().parse("").finish(), Ok(()));
+        assert_eq!(
+            parsers::pure().parse("hello world!").finish(),
+            Err((ParseError::RemainingUnparsed, "hello world!"))
+        )
+    }
+
+    #[test]
+    fn fail() {
+        assert_eq!(
+            parsers::fail("oh no!").parse("").finish(),
+            Err((ParseError::Generic("oh no!".to_owned()), ""))
+        );
+    }
+
+    #[test]
+    fn chars() {
+        assert_eq!(
+            parsers::chars(|c: char| c.is_alphabetic())
+                .parse("1")
+                .finish(),
+            Err((ParseError::UnexpectedChar('1'), "1"))
+        );
+        assert_eq!(
+            parsers::chars(|c: char| c.is_alphabetic())
+                .parse("d")
+                .finish(),
+            Ok('d')
+        );
+    }
+
+    #[test]
+    fn char() {
+        assert_eq!(
+            parsers::char('d').parse("1").finish(),
+            Err((ParseError::UnexpectedChar('1'), "1"))
+        );
+        assert_eq!(parsers::char('d').parse("d").finish(), Ok('d'));
+    }
+
+    #[test]
+    fn tag() {
+        assert_eq!(
+            parsers::tag("hello").parse("hello world"),
+            ParseState::Ok {
+                result: "hello",
+                rest: " world"
+            }
+        );
+        assert_eq!(
+            parsers::tag("bye").parse("hello world"),
+            ParseState::Err {
+                error: ParseError::UnmatchedTag("bye".to_owned()),
+                rest: "hello world"
+            }
+        );
+    }
+
+    #[test]
+    fn any() {
+        assert_eq!(
+            parsers::any().parse("hello world!").finish(),
+            Ok("hello world!".to_owned())
+        )
+    }
+
+    #[test]
+    fn drop() {
+        assert_eq!(parsers::drop().parse("hello world!").finish(), Ok(()))
+    }
+
+    #[test]
+    fn pair() {
+        assert_eq!(
+            parsers::pair(
+                parsers::many_chars(|c: char| c.is_alphabetic()),
+                parsers::any(),
+                " "
+            )
+            .parse("hello world!")
+            .finish(),
+            Ok(("hello".to_owned(), "world!".to_owned()))
+        );
+        assert_eq!(
+            parsers::pair(
+                parsers::many_chars(|c: char| c.is_alphabetic()),
+                parsers::fail("oh no!"),
+                " "
+            )
+            .parse("hello world!")
+            .finish(),
+            Err((ParseError::Generic("oh no!".to_owned()), "world!"))
+        );
+    }
+
+    #[test]
+    fn many() {
+        assert_eq!(
+            parsers::many(parsers::chars(|c: char| c.is_numeric()))
+                .parse("12345")
+                .finish()
+                .map(|v| v.collect::<Vec<char>>()),
+            Ok(vec!['1', '2', '3', '4', '5'])
+        );
+        assert_eq!(
+            parsers::many(parsers::chars(|c: char| c.is_numeric()))
+                .parse("12345 ab")
+                .finish()
+                .map(|v| v.collect::<Vec<char>>()),
+            Err((ParseError::RemainingUnparsed, " ab"))
+        );
+    }
+
+    #[test]
+    fn many_chars() {
+        assert_eq!(
+            parsers::many_chars(|c: char| c.is_numeric())
+                .parse("12345")
+                .finish(),
+            Ok("12345".to_owned())
+        );
+        assert_eq!(
+            parsers::many_chars(|c: char| c.is_numeric())
+                .parse("12345 ab")
+                .finish(),
+            Err((ParseError::RemainingUnparsed, " ab"))
+        );
+    }
+
+    #[test]
+    fn number() {
+        assert_eq!(parsers::number().parse("12345").finish(), Ok(12345));
+        assert_eq!(
+            parsers::number_with_seps(",").parse("12,345").finish(),
+            Ok(12345)
+        );
+        assert_eq!(
+            parsers::number().parse("12,345"),
+            ParseState::ok(12, ",345")
+        );
+    }
+
+    #[test]
+    fn list() {
+        assert_eq!(
+            parsers::list(parsers::chars(|c: char| c.is_numeric()), ",")
+                .parse("1,2,3,4,5")
+                .finish()
+                .map(|v| v.collect::<Vec<char>>()),
+            Ok(vec!['1', '2', '3', '4', '5'])
+        );
+        assert_eq!(
+            parsers::list(
+                parsers::chars(|c: char| c.is_numeric())
+                    .map(|c: char| c.to_string().parse::<usize>().unwrap()),
+                ","
+            )
+            .parse("1,2,3,4,5")
+            .finish()
+            .map(|v| v.collect::<Vec<usize>>()),
+            Ok(vec![1, 2, 3, 4, 5])
+        );
+        let parser = parsers::list(
+            parsers::any().map(|s: String| s.parse::<usize>().unwrap()),
+            ",",
+        );
+        assert_eq!(
+            parser
+                .parse("12345")
+                .finish()
+                .map(|v| v.collect::<Vec<usize>>()),
+            Ok(vec![12345])
+        )
+    }
+
+    #[test]
+    fn line() {
+        assert_eq!(
+            parsers::line('\n').parse("abc\ndef"),
+            ParseState::ok("abc".to_owned(), "def")
+        )
     }
 }
