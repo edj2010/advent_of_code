@@ -225,6 +225,24 @@ mod parsers_internal {
         }
     }
 
+    // CharAny
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    pub struct CharAny;
+
+    impl CharAny {
+        pub fn new() -> Self {
+            CharAny
+        }
+    }
+
+    impl Parser for CharAny {
+        type Output = char;
+
+        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
+            parsers::chars(|_| true).parse(s)
+        }
+    }
+
     // Tag
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     pub struct Tag<'a>(&'a str);
@@ -535,7 +553,7 @@ mod parsers_internal {
         }
     }
 
-    // String
+    // ManyChars
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     pub struct ManyChars<F: Fn(char) -> bool>(F);
 
@@ -552,6 +570,55 @@ mod parsers_internal {
             parsers::many(parsers::chars(self.0))
                 .map(|v: ManyIter<char>| v.collect::<String>())
                 .parse(s)
+        }
+    }
+
+    // Repeat
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    pub struct Repeat<P> {
+        count: usize,
+        p: P,
+    }
+
+    impl<P> Repeat<P> {
+        pub fn new(count: usize, p: P) -> Self {
+            Repeat { count, p }
+        }
+    }
+
+    impl<T, P> Repeat<P>
+    where
+        P: Parser<Output = T> + Clone,
+    {
+        fn partial_parse<'a>(self, count: usize, s: &'a str) -> ParseState<'a, ManyIter<T>> {
+            match count {
+                0 => parsers::pure().map(|()| ManyIter::empty()).parse(s),
+                count => {
+                    let (result, rest) = match self.p.clone().parse(s) {
+                        ParseState::Ok { result, rest } => (result, rest),
+                        ParseState::Err { error, rest } => {
+                            return ParseState::error(error, rest);
+                        }
+                    };
+                    let (many, rest) = match self.partial_parse(count - 1, rest) {
+                        ParseState::Ok { result, rest } => (result, rest),
+                        ParseState::Err { error, rest } => return ParseState::error(error, rest),
+                    };
+                    ParseState::ok(many.extended(result), rest)
+                }
+            }
+        }
+    }
+
+    impl<T, P> Parser for Repeat<P>
+    where
+        P: Parser<Output = T> + Clone,
+    {
+        type Output = ManyIter<T>;
+
+        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
+            let count = self.count;
+            self.partial_parse(count, s)
         }
     }
 
@@ -614,6 +681,7 @@ mod parsers_internal {
     }
 
     // Line
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     pub struct Line(char);
 
     impl Line {
@@ -631,6 +699,56 @@ mod parsers_internal {
                 .and_then(parsers::char(self.0))
                 .map(|(s, _)| s)
                 .parse(s)
+        }
+    }
+
+    // Ingore
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    pub struct Ignore<P, Q> {
+        p: P,
+        q: Q,
+    }
+
+    impl<P, Q> Ignore<P, Q> {
+        pub fn new(p: P, q: Q) -> Self {
+            Ignore { p, q }
+        }
+    }
+
+    impl<T, P, Q> Parser for Ignore<P, Q>
+    where
+        P: Parser,
+        Q: Parser<Output = T>,
+    {
+        type Output = T;
+
+        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
+            self.p.and_then(self.q).map(|(_, r)| r).parse(s)
+        }
+    }
+
+    // Skip
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    pub struct Skip<P, Q> {
+        p: P,
+        q: Q,
+    }
+
+    impl<P, Q> Skip<P, Q> {
+        pub fn new(p: P, q: Q) -> Self {
+            Skip { p, q }
+        }
+    }
+
+    impl<T, P, Q> Parser for Skip<P, Q>
+    where
+        P: Parser<Output = T>,
+        Q: Parser,
+    {
+        type Output = T;
+
+        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
+            self.p.and_then(self.q).map(|(r, _)| r).parse(s)
         }
     }
 }
@@ -658,6 +776,11 @@ pub mod parsers {
     }
 
     #[inline]
+    pub fn char_any() -> parsers_internal::CharAny {
+        parsers_internal::CharAny::new()
+    }
+
+    #[inline]
     pub fn tag<'a>(s: &'a str) -> parsers_internal::Tag<'a> {
         parsers_internal::Tag::new(s)
     }
@@ -673,7 +796,7 @@ pub mod parsers {
     }
 
     #[inline]
-    pub fn pair<'a, P, Q>(p: P, q: Q, sep: &'a str) -> parsers_internal::Pair<'a, P, Q> {
+    pub fn pair<'a, P, Q>(sep: &'a str, p: P, q: Q) -> parsers_internal::Pair<'a, P, Q> {
         parsers_internal::Pair::new(sep, p, q)
     }
 
@@ -729,6 +852,16 @@ pub trait Parser: Sized {
     }
 
     #[inline]
+    fn ignore<Q>(self, other: Q) -> parsers_internal::Ignore<Self, Q> {
+        parsers_internal::Ignore::new(self, other)
+    }
+
+    #[inline]
+    fn skip<Q>(self, other: Q) -> parsers_internal::Skip<Self, Q> {
+        parsers_internal::Skip::new(self, other)
+    }
+
+    #[inline]
     fn xor<Q>(self, other: Q) -> parsers_internal::Xor<Self, Q> {
         parsers_internal::Xor::new(self, other)
     }
@@ -741,6 +874,11 @@ pub trait Parser: Sized {
     #[inline]
     fn bind<F>(self, f: F) -> parsers_internal::Bind<Self, F> {
         parsers_internal::Bind::new(self, f)
+    }
+
+    #[inline]
+    fn repeat(self, count: usize) -> parsers_internal::Repeat<Self> {
+        parsers_internal::Repeat::new(count, self)
     }
 }
 
@@ -826,9 +964,9 @@ mod tests {
     fn pair() {
         assert_eq!(
             parsers::pair(
+                " ",
                 parsers::many_chars(|c: char| c.is_alphabetic()),
-                parsers::any(),
-                " "
+                parsers::any()
             )
             .parse("hello world!")
             .finish(),
@@ -836,9 +974,9 @@ mod tests {
         );
         assert_eq!(
             parsers::pair(
+                " ",
                 parsers::many_chars(|c: char| c.is_alphabetic()),
-                parsers::fail("oh no!"),
-                " "
+                parsers::fail("oh no!")
             )
             .parse("hello world!")
             .finish(),
@@ -901,6 +1039,14 @@ mod tests {
                 .finish()
                 .map(|v| v.collect::<Vec<char>>()),
             Ok(vec!['1', '2', '3', '4', '5'])
+        );
+        assert_eq!(
+            parsers::list(",", parsers::chars(|c: char| c.is_numeric()))
+                .skip(parsers::any())
+                .parse(",1,2,3,4,5")
+                .finish()
+                .map(|v| v.collect::<Vec<char>>()),
+            Ok(vec![])
         );
         assert_eq!(
             parsers::list(
@@ -1025,6 +1171,63 @@ mod tests {
     }
 
     #[test]
+    fn ignore() {
+        assert_eq!(
+            parsers::number()
+                .ignore(parsers::any())
+                .parse("123abc")
+                .finish(),
+            Ok("abc".to_owned())
+        );
+        assert_eq!(
+            parsers::char('b')
+                .ignore(parsers::number())
+                .parse("a123abc")
+                .finish(),
+            Err((ParseError::UnexpectedChar('a'), "a123abc"))
+        );
+        assert_eq!(
+            parsers::number()
+                .ignore(parsers::number())
+                .parse("123abc")
+                .finish(),
+            Err((ParseError::ParseIntError("".to_string()), "abc"))
+        );
+    }
+
+    #[test]
+    fn skip() {
+        assert_eq!(
+            parsers::number()
+                .skip(parsers::any())
+                .parse("123abc")
+                .finish(),
+            Ok(123)
+        );
+        assert_eq!(
+            parsers::number()
+                .skip(parsers::char('\n'))
+                .parse("123\n")
+                .finish(),
+            Ok(123)
+        );
+        assert_eq!(
+            parsers::char('b')
+                .skip(parsers::number())
+                .parse("a123abc")
+                .finish(),
+            Err((ParseError::UnexpectedChar('a'), "a123abc"))
+        );
+        assert_eq!(
+            parsers::number()
+                .skip(parsers::number())
+                .parse("123abc")
+                .finish(),
+            Err((ParseError::ParseIntError("".to_string()), "abc"))
+        );
+    }
+
+    #[test]
     fn and_then() {
         assert_eq!(
             parsers::number()
@@ -1115,5 +1318,32 @@ mod tests {
                 .finish(),
             Err((ParseError::ParseIntError("a123".to_string()), "a123"))
         )
+    }
+
+    #[test]
+    fn repeat() {
+        assert_eq!(
+            parsers::chars(|c| c.is_alphabetic())
+                .repeat(5)
+                .parse("abcde")
+                .finish()
+                .unwrap()
+                .collect::<String>(),
+            "abcde".to_string()
+        );
+        assert_eq!(
+            parsers::chars(|c| c.is_alphabetic())
+                .repeat(5)
+                .parse("abcd")
+                .finish(),
+            Err((ParseError::EndOfString, ""))
+        );
+        assert_eq!(
+            parsers::chars(|c| c.is_alphabetic())
+                .repeat(5)
+                .parse("abcdef")
+                .finish(),
+            Err((ParseError::RemainingUnparsed, "f"))
+        );
     }
 }
