@@ -906,6 +906,11 @@ pub trait Parser: Sized {
     fn many(self) -> parsers_internal::Many<Self> {
         parsers_internal::Many::new(self)
     }
+
+    #[inline]
+    fn many_lines<'a>(self, terminator: &'a str) -> parsers_internal::ManyLines<'a, Self> {
+        parsers_internal::ManyLines::new(terminator, self)
+    }
 }
 
 #[cfg(test)]
@@ -1122,6 +1127,26 @@ mod tests {
                 .parse("abc\ndef"),
             ParseState::ok("abc".to_owned(), "def")
         )
+    }
+
+    #[test]
+    fn many_lines() {
+        assert_eq!(
+            parsers::many_chars(|c| c.is_alphabetic())
+                .many_lines("\n")
+                .parse("abc\ndef\nghi\n")
+                .finish()
+                .map(|v| v.collect::<Vec<String>>()),
+            Ok(vec!["abc".to_owned(), "def".to_string(), "ghi".to_string()])
+        );
+        assert_eq!(
+            parsers::many_chars(|c| c.is_alphabetic())
+                .many_lines("\n")
+                .parse("abc\ndef\nghi")
+                .finish()
+                .map(|v| v.collect::<Vec<String>>()),
+            Err((ParseError::RemainingUnparsed, "ghi"))
+        );
     }
 
     #[test]
