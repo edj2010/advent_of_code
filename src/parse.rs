@@ -388,7 +388,11 @@ mod parsers_internal {
         f: F,
     }
 
-    impl<P, F> Map<P, F> {
+    impl<T, U, P, F> Map<P, F>
+    where
+        P: Parser<Output = T>,
+        F: Fn(T) -> U,
+    {
         pub fn new(p: P, f: F) -> Self {
             Map { p, f }
         }
@@ -873,7 +877,11 @@ pub trait Parser: Sized {
     }
 
     #[inline]
-    fn map<F>(self, f: F) -> parsers_internal::Map<Self, F> {
+    fn map<T, U, F>(self, f: F) -> parsers_internal::Map<Self, F>
+    where
+        Self: Parser<Output = T>,
+        F: Fn(T) -> U,
+    {
         parsers_internal::Map::new(self, f)
     }
 
