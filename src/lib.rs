@@ -1,5 +1,7 @@
 #![feature(try_trait_v2)]
 #![feature(generic_const_exprs)]
+#![feature(never_type)]
+#![feature(associated_type_bounds)]
 #![allow(incomplete_features)]
 
 pub mod grid;
