@@ -567,7 +567,8 @@ mod parsers_internal {
         type Output = String;
 
         fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
-            parsers::many(parsers::chars(self.0))
+            parsers::chars(self.0)
+                .many()
                 .map(|v: ManyIter<char>| v.collect::<String>())
                 .parse(s)
         }
@@ -636,14 +637,13 @@ mod parsers_internal {
         type Output = usize;
 
         fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
-            parsers::many(parsers::chars(|c: char| {
-                c.is_numeric() || self.0.contains(c)
-            }))
-            .bind(|v: ManyIter<char>| {
-                let s = v.filter(|c: &char| c.is_numeric()).collect::<String>();
-                s.parse::<usize>().map_err(|_| ParseError::ParseIntError(s))
-            })
-            .parse(s)
+            parsers::chars(|c: char| c.is_numeric() || self.0.contains(c))
+                .many()
+                .bind(|v: ManyIter<char>| {
+                    let s = v.filter(|c: &char| c.is_numeric()).collect::<String>();
+                    s.parse::<usize>().map_err(|_| ParseError::ParseIntError(s))
+                })
+                .parse(s)
         }
     }
 
@@ -669,11 +669,12 @@ mod parsers_internal {
         fn parse<'b>(self, s: &'b str) -> ParseState<'b, Self::Output> {
             self.p
                 .clone()
-                .and_then(parsers::many(
+                .and_then(
                     parsers::tag(self.sep)
                         .and_then(self.p.clone())
-                        .map(|(_, v)| v),
-                ))
+                        .map(|(_, v)| v)
+                        .many(),
+                )
                 .map(|(head, tail): (T, ManyIter<T>)| tail.extended(head))
                 .parse(s)
         }
@@ -681,23 +682,49 @@ mod parsers_internal {
 
     // Line
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-    pub struct Line(char);
+    pub struct Line<'a, P> {
+        terminator: &'a str,
+        p: P,
+    }
 
-    impl Line {
-        pub fn new(terminator: char) -> Self {
-            Line(terminator)
+    impl<'a, P> Line<'a, P> {
+        pub fn new(terminator: &'a str, p: P) -> Self {
+            Line { terminator, p }
         }
     }
 
-    impl Parser for Line {
-        type Output = String;
+    impl<'b, T, P> Parser for Line<'b, P>
+    where
+        P: Parser<Output = T>,
+    {
+        type Output = T;
 
         fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
-            parsers::many(parsers::chars(|c: char| c != self.0))
-                .map(|v: ManyIter<char>| v.collect::<String>())
-                .and_then(parsers::char(self.0))
-                .map(|(s, _)| s)
-                .parse(s)
+            self.p.skip(parsers::tag(self.terminator)).parse(s)
+        }
+    }
+
+    // ManyLines
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    pub struct ManyLines<'a, P> {
+        terminator: &'a str,
+        p: P,
+    }
+
+    impl<'a, P> ManyLines<'a, P> {
+        pub fn new(terminator: &'a str, p: P) -> Self {
+            ManyLines { terminator, p }
+        }
+    }
+
+    impl<'b, T, P> Parser for ManyLines<'b, P>
+    where
+        P: Parser<Output = T> + Clone,
+    {
+        type Output = ManyIter<T>;
+
+        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
+            self.p.line(self.terminator).many().parse(s)
         }
     }
 
@@ -795,16 +822,6 @@ pub mod parsers {
     }
 
     #[inline]
-    pub fn pair<'a, P, Q>(sep: &'a str, p: P, q: Q) -> parsers_internal::Pair<'a, P, Q> {
-        parsers_internal::Pair::new(sep, p, q)
-    }
-
-    #[inline]
-    pub fn many<P>(p: P) -> parsers_internal::Many<P> {
-        parsers_internal::Many::new(p)
-    }
-
-    #[inline]
     pub fn many_chars<F: Fn(char) -> bool + Clone>(f: F) -> parsers_internal::ManyChars<F> {
         parsers_internal::ManyChars::new(f)
     }
@@ -817,16 +834,6 @@ pub mod parsers {
     #[inline]
     pub fn number_with_seps<'a>(sep_chars: &'a str) -> parsers_internal::Number<'a> {
         parsers_internal::Number::new(sep_chars)
-    }
-
-    #[inline]
-    pub fn list<'a, P>(sep: &'a str, p: P) -> parsers_internal::List<'a, P> {
-        parsers_internal::List::new(sep, p)
-    }
-
-    #[inline]
-    pub fn line(terminator: char) -> parsers_internal::Line {
-        parsers_internal::Line::new(terminator)
     }
 }
 
@@ -878,6 +885,26 @@ pub trait Parser: Sized {
     #[inline]
     fn repeat(self, count: usize) -> parsers_internal::Repeat<Self> {
         parsers_internal::Repeat::new(count, self)
+    }
+
+    #[inline]
+    fn line<'a>(self, terminator: &'a str) -> parsers_internal::Line<'a, Self> {
+        parsers_internal::Line::new(terminator, self)
+    }
+
+    #[inline]
+    fn list<'a>(self, sep: &'a str) -> parsers_internal::List<'a, Self> {
+        parsers_internal::List::new(sep, self)
+    }
+
+    #[inline]
+    fn pair<'a, Q>(self, sep: &'a str, q: Q) -> parsers_internal::Pair<'a, Self, Q> {
+        parsers_internal::Pair::new(sep, self, q)
+    }
+
+    #[inline]
+    fn many(self) -> parsers_internal::Many<Self> {
+        parsers_internal::Many::new(self)
     }
 }
 
@@ -962,23 +989,17 @@ mod tests {
     #[test]
     fn pair() {
         assert_eq!(
-            parsers::pair(
-                " ",
-                parsers::many_chars(|c: char| c.is_alphabetic()),
-                parsers::any()
-            )
-            .parse("hello world!")
-            .finish(),
+            parsers::many_chars(|c: char| c.is_alphabetic())
+                .pair(" ", parsers::any())
+                .parse("hello world!")
+                .finish(),
             Ok(("hello".to_owned(), "world!".to_owned()))
         );
         assert_eq!(
-            parsers::pair(
-                " ",
-                parsers::many_chars(|c: char| c.is_alphabetic()),
-                parsers::fail("oh no!")
-            )
-            .parse("hello world!")
-            .finish(),
+            parsers::many_chars(|c: char| c.is_alphabetic())
+                .pair(" ", parsers::fail("oh no!"))
+                .parse("hello world!")
+                .finish(),
             Err((ParseError::Generic("oh no!".to_owned()), "world!"))
         );
     }
@@ -986,14 +1007,16 @@ mod tests {
     #[test]
     fn many() {
         assert_eq!(
-            parsers::many(parsers::chars(|c: char| c.is_numeric()))
+            parsers::chars(|c: char| c.is_numeric())
+                .many()
                 .parse("12345")
                 .finish()
                 .map(|v| v.collect::<Vec<char>>()),
             Ok(vec!['1', '2', '3', '4', '5'])
         );
         assert_eq!(
-            parsers::many(parsers::chars(|c: char| c.is_numeric()))
+            parsers::chars(|c: char| c.is_numeric())
+                .many()
                 .parse("12345 ab")
                 .finish()
                 .map(|v| v.collect::<Vec<char>>()),
@@ -1033,14 +1056,16 @@ mod tests {
     #[test]
     fn list() {
         assert_eq!(
-            parsers::list(",", parsers::chars(|c: char| c.is_numeric()))
+            parsers::chars(|c: char| c.is_numeric())
+                .list(",")
                 .parse("1,2,3,4,5")
                 .finish()
                 .map(|v| v.collect::<Vec<char>>()),
             Ok(vec!['1', '2', '3', '4', '5'])
         );
         assert_eq!(
-            parsers::list(",", parsers::chars(|c: char| c.is_numeric()))
+            parsers::chars(|c: char| c.is_numeric())
+                .list(",")
                 .skip(parsers::any())
                 .parse(",1,2,3,4,5")
                 .finish()
@@ -1048,40 +1073,35 @@ mod tests {
             Err((ParseError::UnexpectedChar(','), ",1,2,3,4,5"))
         );
         assert_eq!(
-            parsers::list(
-                ",",
-                parsers::chars(|c: char| c.is_numeric())
-                    .map(|c: char| c.to_string().parse::<usize>().unwrap())
-            )
-            .parse("1,2,3,4,5")
-            .finish()
-            .map(|v| v.collect::<Vec<usize>>()),
+            parsers::chars(|c: char| c.is_numeric())
+                .map(|c: char| c.to_string().parse::<usize>().unwrap())
+                .list(",")
+                .parse("1,2,3,4,5")
+                .finish()
+                .map(|v| v.collect::<Vec<usize>>()),
             Ok(vec![1, 2, 3, 4, 5])
         );
         assert_eq!(
-            parsers::list(
-                ",",
-                parsers::chars(|c: char| c.is_numeric())
-                    .map(|c: char| c.to_string().parse::<usize>().unwrap())
-            )
-            .parse("1,2,3,4,5,")
-            .finish()
-            .map(|v| v.collect::<Vec<usize>>()),
+            parsers::chars(|c: char| c.is_numeric())
+                .map(|c: char| c.to_string().parse::<usize>().unwrap())
+                .list(",")
+                .parse("1,2,3,4,5,")
+                .finish()
+                .map(|v| v.collect::<Vec<usize>>()),
             Err((ParseError::RemainingUnparsed, ","))
         );
-        let parser = parsers::list(
-            ",",
-            parsers::any().map(|s: String| s.parse::<usize>().unwrap()),
-        );
         assert_eq!(
-            parser
+            parsers::any()
+                .map(|s: String| s.parse::<usize>().unwrap())
+                .list(",")
                 .parse("12345")
                 .finish()
                 .map(|v| v.collect::<Vec<usize>>()),
             Ok(vec![12345])
         );
         assert_eq!(
-            parsers::list("\n\n", parsers::number())
+            parsers::number()
+                .list("\n\n")
                 .parse(
                     "123
 
@@ -1097,7 +1117,9 @@ mod tests {
     #[test]
     fn line() {
         assert_eq!(
-            parsers::line('\n').parse("abc\ndef"),
+            parsers::many_chars(|c| c.is_alphabetic())
+                .line("\n")
+                .parse("abc\ndef"),
             ParseState::ok("abc".to_owned(), "def")
         )
     }
@@ -1109,7 +1131,9 @@ mod tests {
 
 789
 123";
-        let result = parsers::list("\n\n", parsers::list("\n", parsers::number()))
+        let result = parsers::number()
+            .list("\n")
+            .list("\n\n")
             .parse(input)
             .finish()
             .unwrap()
