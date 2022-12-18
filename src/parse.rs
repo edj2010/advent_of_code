@@ -675,7 +675,6 @@ mod parsers_internal {
                         .map(|(_, v)| v),
                 ))
                 .map(|(head, tail): (T, ManyIter<T>)| tail.extended(head))
-                .or(parsers::pure().map(|()| ManyIter::<T>::empty()))
                 .parse(s)
         }
     }
@@ -1046,7 +1045,7 @@ mod tests {
                 .parse(",1,2,3,4,5")
                 .finish()
                 .map(|v| v.collect::<Vec<char>>()),
-            Ok(vec![])
+            Err((ParseError::UnexpectedChar(','), ",1,2,3,4,5"))
         );
         assert_eq!(
             parsers::list(
