@@ -134,6 +134,7 @@ impl<'a, T> ParseState<'a, T> {
 ///////
 
 mod parsers_internal {
+    use std::collections::VecDeque;
 
     use super::{parsers, ParseError, ParseState, Parser};
 
@@ -504,17 +505,22 @@ mod parsers_internal {
     // Many
     #[derive(Debug, PartialEq, Eq, Clone)]
     pub struct ManyIter<T> {
-        contents: Vec<T>,
+        contents: VecDeque<T>,
     }
 
     impl<T> ManyIter<T> {
         fn empty() -> Self {
-            ManyIter { contents: vec![] }
+            ManyIter {
+                contents: VecDeque::new(),
+            }
         }
 
-        fn extended(mut self, t: T) -> Self {
-            self.contents.push(t);
-            self
+        fn cons(&mut self, t: T) {
+            self.contents.push_front(t);
+        }
+
+        fn extend(&mut self, t: T) {
+            self.contents.push_back(t);
         }
     }
 
@@ -522,7 +528,7 @@ mod parsers_internal {
         type Item = T;
 
         fn next(&mut self) -> Option<Self::Item> {
-            self.contents.pop()
+            self.contents.pop_front()
         }
     }
 
@@ -543,17 +549,13 @@ mod parsers_internal {
     {
         type Output = ManyIter<T>;
 
-        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
-            let ParseState::Ok{result, rest} = self.p.clone().parse(s) else {
-                return ParseState::ok(ManyIter::empty(), s);
-            };
-            let ParseState::Ok {
-                result: many, rest
-            } = self.parse(rest)
-            else {
-                return ParseState::error_generic("Many parser should not fail", s)
-            };
-            ParseState::ok(many.extended(result), rest)
+        fn parse<'a>(self, mut s: &'a str) -> ParseState<'a, Self::Output> {
+            let mut many = ManyIter::empty();
+            while let ParseState::Ok { result, rest } = self.p.clone().parse(s) {
+                s = rest;
+                many.extend(result);
+            }
+            ParseState::ok(many, s)
         }
     }
 
@@ -591,39 +593,26 @@ mod parsers_internal {
         }
     }
 
-    impl<T, P> Repeat<P>
-    where
-        P: Parser<Output = T> + Clone,
-    {
-        fn partial_parse<'a>(self, count: usize, s: &'a str) -> ParseState<'a, ManyIter<T>> {
-            match count {
-                0 => parsers::pure().map(|()| ManyIter::empty()).parse(s),
-                count => {
-                    let (result, rest) = match self.p.clone().parse(s) {
-                        ParseState::Ok { result, rest } => (result, rest),
-                        ParseState::Err { error, rest } => {
-                            return ParseState::error(error, rest);
-                        }
-                    };
-                    let (many, rest) = match self.partial_parse(count - 1, rest) {
-                        ParseState::Ok { result, rest } => (result, rest),
-                        ParseState::Err { error, rest } => return ParseState::error(error, rest),
-                    };
-                    ParseState::ok(many.extended(result), rest)
-                }
-            }
-        }
-    }
-
     impl<T, P> Parser for Repeat<P>
     where
         P: Parser<Output = T> + Clone,
     {
         type Output = ManyIter<T>;
 
-        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
-            let count = self.count;
-            self.partial_parse(count, s)
+        fn parse<'a>(self, mut s: &'a str) -> ParseState<'a, Self::Output> {
+            let mut many = ManyIter::empty();
+            for _ in 0..self.count {
+                match self.p.clone().parse(s) {
+                    ParseState::Ok { result, rest } => {
+                        s = rest;
+                        many.extend(result);
+                    }
+                    ParseState::Err { error, rest } => {
+                        return ParseState::error(error, rest);
+                    }
+                };
+            }
+            ParseState::ok(many, s)
         }
     }
 
@@ -647,6 +636,28 @@ mod parsers_internal {
                     let s = v.filter(|c: &char| c.is_numeric()).collect::<String>();
                     s.parse::<usize>().map_err(|_| ParseError::ParseIntError(s))
                 })
+                .parse(s)
+        }
+    }
+
+    // Signed Number
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    pub struct SignedNumber<'a>(&'a str);
+
+    impl<'a> SignedNumber<'a> {
+        pub fn new(seps: &'a str) -> Self {
+            SignedNumber(seps)
+        }
+    }
+
+    impl<'b> Parser for SignedNumber<'b> {
+        type Output = isize;
+
+        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
+            parsers::char('-')
+                .ignore(parsers::number_with_seps(self.0))
+                .map(|n| -(n as isize))
+                .or(parsers::number_with_seps(self.0).map(|n| n as isize))
                 .parse(s)
         }
     }
@@ -679,7 +690,10 @@ mod parsers_internal {
                         .map(|(_, v)| v)
                         .many(),
                 )
-                .map(|(head, tail): (T, ManyIter<T>)| tail.extended(head))
+                .map(|(head, mut tail): (T, ManyIter<T>)| {
+                    tail.cons(head);
+                    tail
+                })
                 .parse(s)
         }
     }
@@ -838,6 +852,16 @@ pub mod parsers {
     #[inline]
     pub fn number_with_seps<'a>(sep_chars: &'a str) -> parsers_internal::Number<'a> {
         parsers_internal::Number::new(sep_chars)
+    }
+
+    #[inline]
+    pub fn signed_number<'a>() -> parsers_internal::SignedNumber<'a> {
+        parsers_internal::SignedNumber::new("")
+    }
+
+    #[inline]
+    pub fn signed_number_with_seps<'a>(sep_chars: &'a str) -> parsers_internal::SignedNumber<'a> {
+        parsers_internal::SignedNumber::new(sep_chars)
     }
 }
 
@@ -1054,6 +1078,25 @@ mod tests {
     }
 
     #[test]
+    fn signed_number() {
+        assert_eq!(parsers::signed_number().parse("12345").finish(), Ok(12345));
+        assert_eq!(
+            parsers::signed_number().parse("-12345").finish(),
+            Ok(-12345)
+        );
+        assert_eq!(
+            parsers::signed_number_with_seps("-")
+                .parse("-12-345")
+                .finish(),
+            Ok(-12345)
+        );
+        assert_eq!(
+            parsers::signed_number().parse("12,345"),
+            ParseState::ok(12, ",345")
+        );
+    }
+
+    #[test]
     fn number() {
         assert_eq!(parsers::number().parse("12345").finish(), Ok(12345));
         assert_eq!(
@@ -1154,6 +1197,22 @@ mod tests {
                 .finish()
                 .map(|v| v.collect::<Vec<String>>()),
             Err((ParseError::RemainingUnparsed, "ghi"))
+        );
+        assert_eq!(
+            parsers::many_chars(|c| c != '\n')
+                .many_lines("\n")
+                .parse(
+                    "QvJvQbjbCgCQRBhzzRsNWNBC
+bjgGqQGbQnjGQgnQgbGgjJnDLHLdfPVtdDmLZdBFVVZttdTf
+"
+                )
+                .finish()
+                .unwrap()
+                .collect::<Vec<String>>(),
+            vec![
+                "QvJvQbjbCgCQRBhzzRsNWNBC".to_owned(),
+                "bjgGqQGbQnjGQgnQgbGgjJnDLHLdfPVtdDmLZdBFVVZttdTf".to_owned()
+            ]
         );
     }
 

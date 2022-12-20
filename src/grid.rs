@@ -1,42 +1,124 @@
 use std::error::Error;
 use std::fmt::{Debug, Display};
-use std::ops::{Add, Mul, Neg};
+use std::marker::PhantomData;
+use std::ops::{Add, Div, Index, IndexMut, Mul, Neg, Rem, Sub};
 
 /////////////
 /// Grid Point
 ///
 /// datastructure for indexing a grid
 /////////////
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct GridPoint {
-    row: usize,
-    col: usize,
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GridPoint<T, S> {
+    row: T,
+    col: T,
+    _delta_type: PhantomData<S>,
 }
 
-impl Display for GridPoint {
+impl<T, S> Debug for GridPoint<T, S>
+where
+    T: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({:?}, {:?})", self.row, self.col)
+    }
+}
+
+impl<T, S> Display for GridPoint<T, S>
+where
+    T: Display,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "({}, {})", self.row, self.col)
     }
 }
 
-impl GridPoint {
-    pub fn new(row: usize, col: usize) -> Self {
-        GridPoint { row, col }
+impl<T, S> Add<GridPointDelta<S>> for GridPoint<T, S>
+where
+    S: TryInto<T> + Add<S, Output = S> + TryFrom<T>,
+{
+    type Output = Option<GridPoint<T, S>>;
+
+    fn add(self, rhs: GridPointDelta<S>) -> Self::Output {
+        let row: T = (S::try_from(self.row).ok()? + rhs.row_delta)
+            .try_into()
+            .ok()?;
+        let col: T = (S::try_from(self.col).ok()? + rhs.col_delta)
+            .try_into()
+            .ok()?;
+
+        Some(GridPoint::new(row, col))
+    }
+}
+
+impl<T, S> Sub<GridPoint<T, S>> for GridPoint<T, S>
+where
+    T: TryInto<S>,
+    S: Sub<S, Output = S> + TryFrom<T>,
+{
+    type Output = Option<GridPointDelta<S>>;
+
+    fn sub(self, rhs: GridPoint<T, S>) -> Self::Output {
+        let row_delta: S = S::try_from(self.row).ok()? - S::try_from(rhs.row).ok()?;
+        let col_delta: S = S::try_from(self.col).ok()? - S::try_from(rhs.col).ok()?;
+        Some(GridPointDelta {
+            row_delta,
+            col_delta,
+        })
+    }
+}
+
+impl<T, S> GridPoint<T, S> {
+    pub fn new(row: T, col: T) -> Self {
+        GridPoint {
+            row,
+            col,
+            _delta_type: PhantomData,
+        }
     }
 
-    pub fn add(self, rhs: GridPointDelta, rows: usize, cols: usize) -> Option<Self> {
-        let row: usize = ((self.row as isize) + rhs.row_delta).try_into().ok()?;
-        let col: usize = ((self.col as isize) + rhs.col_delta).try_into().ok()?;
+    pub fn add_checked(
+        self,
+        rhs: GridPointDelta<S>,
+        min_row: &T,
+        max_row: &T,
+        min_col: &T,
+        max_col: &T,
+    ) -> Option<Self>
+    where
+        S: TryInto<T> + Add<S, Output = S> + TryFrom<T>,
+        T: PartialOrd,
+    {
+        let row: T = (S::try_from(self.row).ok()? + rhs.row_delta)
+            .try_into()
+            .ok()?;
+        let col: T = (S::try_from(self.col).ok()? + rhs.col_delta)
+            .try_into()
+            .ok()?;
 
-        if row < rows && col < cols {
+        if min_row <= &row && &row < max_row && min_col <= &col && &col < max_col {
             Some(GridPoint::new(row, col))
         } else {
             None
         }
     }
 
-    fn as_arr_idx(&self, cols: usize) -> usize {
-        self.row * cols + self.col
+    fn as_arr_idx(&self, cols: T) -> T
+    where
+        T: Add<T, Output = T> + Mul<T, Output = T> + Clone,
+    {
+        self.row.clone() * cols + self.col.clone()
+    }
+
+    fn of_arr_idx(arr_idx: T, cols: T) -> Self
+    where
+        T: Div<T, Output = T> + Rem<T, Output = T> + Clone,
+    {
+        GridPoint {
+            row: arr_idx.clone() / cols.clone(),
+            col: arr_idx % cols,
+            _delta_type: PhantomData,
+        }
     }
 }
 
@@ -46,26 +128,31 @@ impl GridPoint {
 /// datastructure for adding to/subtracting from grid points
 ////////////
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct GridPointDelta {
-    row_delta: isize,
-    col_delta: isize,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GridPointDelta<T> {
+    pub row_delta: T,
+    pub col_delta: T,
 }
 
-impl Display for GridPointDelta {
+impl<T> Display for GridPointDelta<T>
+where
+    T: Display,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "({}, {})", self.row_delta, self.row_delta)
+        write!(f, "({}, {})", self.row_delta, self.col_delta)
     }
 }
 
-impl GridPointDelta {
-    pub fn new(row_delta: isize, col_delta: isize) -> Self {
+impl<T> GridPointDelta<T> {
+    pub fn new(row_delta: T, col_delta: T) -> Self {
         GridPointDelta {
             row_delta,
             col_delta,
         }
     }
+}
 
+impl GridPointDelta<isize> {
     pub fn zero() -> Self {
         GridPointDelta {
             row_delta: 0,
@@ -74,7 +161,10 @@ impl GridPointDelta {
     }
 }
 
-impl Neg for GridPointDelta {
+impl<T> Neg for GridPointDelta<T>
+where
+    T: Neg<Output = T>,
+{
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -85,7 +175,10 @@ impl Neg for GridPointDelta {
     }
 }
 
-impl Add<Self> for GridPointDelta {
+impl<T> Add<Self> for GridPointDelta<T>
+where
+    T: Add<T, Output = T>,
+{
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -96,59 +189,66 @@ impl Add<Self> for GridPointDelta {
     }
 }
 
-impl Mul<isize> for GridPointDelta {
+impl<T> Mul<T> for GridPointDelta<T>
+where
+    T: Mul<T, Output = T> + Clone,
+{
     type Output = Self;
 
-    fn mul(self, rhs: isize) -> Self::Output {
+    fn mul(self, rhs: T) -> Self::Output {
         GridPointDelta {
-            row_delta: self.row_delta * rhs,
+            row_delta: self.row_delta * rhs.clone(),
             col_delta: self.col_delta * rhs,
         }
     }
 }
 
-pub const NORTH: GridPointDelta = GridPointDelta {
+pub const ZERO: GridPointDelta<isize> = GridPointDelta {
+    row_delta: 0,
+    col_delta: 0,
+};
+pub const NORTH: GridPointDelta<isize> = GridPointDelta {
     row_delta: 0,
     col_delta: -1,
 };
-pub const EAST: GridPointDelta = GridPointDelta {
+pub const EAST: GridPointDelta<isize> = GridPointDelta {
     row_delta: 1,
     col_delta: 0,
 };
-pub const SOUTH: GridPointDelta = GridPointDelta {
+pub const SOUTH: GridPointDelta<isize> = GridPointDelta {
     row_delta: 0,
     col_delta: 1,
 };
-pub const WEST: GridPointDelta = GridPointDelta {
+pub const WEST: GridPointDelta<isize> = GridPointDelta {
     row_delta: -1,
     col_delta: 0,
 };
 
-pub const NORTHEAST: GridPointDelta = GridPointDelta {
+pub const NORTHEAST: GridPointDelta<isize> = GridPointDelta {
     row_delta: 1,
     col_delta: -1,
 };
-pub const SOUTHEAST: GridPointDelta = GridPointDelta {
+pub const SOUTHEAST: GridPointDelta<isize> = GridPointDelta {
     row_delta: 1,
     col_delta: 1,
 };
-pub const SOUTHWEST: GridPointDelta = GridPointDelta {
+pub const SOUTHWEST: GridPointDelta<isize> = GridPointDelta {
     row_delta: -1,
     col_delta: 1,
 };
-pub const NORTHWEST: GridPointDelta = GridPointDelta {
+pub const NORTHWEST: GridPointDelta<isize> = GridPointDelta {
     row_delta: -1,
     col_delta: -1,
 };
 
 #[allow(dead_code)]
-pub const PLUS_ADJACENT: [GridPointDelta; 4] = [NORTH, EAST, SOUTH, WEST];
+pub const PLUS_ADJACENT: [GridPointDelta<isize>; 4] = [NORTH, EAST, SOUTH, WEST];
 
 #[allow(dead_code)]
-pub const DIAG_ADJACENT: [GridPointDelta; 4] = [NORTHEAST, SOUTHEAST, SOUTHWEST, NORTHWEST];
+pub const DIAG_ADJACENT: [GridPointDelta<isize>; 4] = [NORTHEAST, SOUTHEAST, SOUTHWEST, NORTHWEST];
 
 #[allow(dead_code)]
-pub const ADJACENT: [GridPointDelta; 8] = [
+pub const ADJACENT: [GridPointDelta<isize>; 8] = [
     NORTH, NORTHEAST, EAST, SOUTHEAST, SOUTH, SOUTHWEST, WEST, NORTHWEST,
 ];
 
@@ -158,19 +258,31 @@ pub const ADJACENT: [GridPointDelta; 8] = [
 /// helpful iterators for stepping over the grid
 ////////////
 
-pub struct GridPointIterator {
-    next: Option<GridPoint>,
-    traverse_by: GridPointDelta,
-    rows: usize,
-    cols: usize,
+pub struct GridPointIterator<T, S> {
+    next: Option<GridPoint<T, S>>,
+    traverse_by: GridPointDelta<S>,
+    min_row: T,
+    max_row: T,
+    min_col: T,
+    max_col: T,
 }
 
-impl Iterator for GridPointIterator {
-    type Item = GridPoint;
+impl<T, S> Iterator for GridPointIterator<T, S>
+where
+    S: TryInto<T> + Add<S, Output = S> + TryFrom<T> + Clone,
+    T: PartialOrd + Clone,
+{
+    type Item = GridPoint<T, S>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(next) = self.next {
-            self.next = next.add(self.traverse_by, self.rows, self.cols);
+        if let Some(next) = self.next.clone() {
+            self.next = next.clone().add_checked(
+                self.traverse_by.clone(),
+                &self.min_row,
+                &self.max_row,
+                &self.min_col,
+                &self.max_col,
+            );
             Some(next)
         } else {
             None
@@ -178,18 +290,22 @@ impl Iterator for GridPointIterator {
     }
 }
 
-impl GridPoint {
+impl<T, S> GridPoint<T, S> {
     pub fn traverse_by(
         self,
-        traverse_by: GridPointDelta,
-        rows: usize,
-        cols: usize,
-    ) -> GridPointIterator {
+        traverse_by: GridPointDelta<S>,
+        min_row: T,
+        max_row: T,
+        min_col: T,
+        max_col: T,
+    ) -> GridPointIterator<T, S> {
         GridPointIterator {
             next: Some(self),
             traverse_by,
-            rows,
-            cols,
+            min_row,
+            max_row,
+            min_col,
+            max_col,
         }
     }
 }
@@ -201,15 +317,15 @@ impl GridPoint {
 ////////////
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct IndexOutOfBoundsError {
+pub struct IndexOutOfBoundsError<T, S> {
     rows: usize,
     cols: usize,
-    attempted: GridPoint,
+    attempted: GridPoint<T, S>,
 }
 
-impl IndexOutOfBoundsError {
+impl<T, S> IndexOutOfBoundsError<T, S> {
     #[inline]
-    fn new(rows: usize, cols: usize, attempted: GridPoint) -> Self {
+    fn new(rows: usize, cols: usize, attempted: GridPoint<T, S>) -> Self {
         IndexOutOfBoundsError {
             rows,
             cols,
@@ -218,12 +334,12 @@ impl IndexOutOfBoundsError {
     }
 
     #[inline]
-    fn err<T>(rows: usize, cols: usize, attempted: GridPoint) -> IndexResult<T> {
+    fn err<U>(rows: usize, cols: usize, attempted: GridPoint<T, S>) -> IndexResult<U, T, S> {
         Result::Err(IndexOutOfBoundsError::new(rows, cols, attempted))
     }
 }
 
-impl Display for IndexOutOfBoundsError {
+impl<T: Display, S> Display for IndexOutOfBoundsError<T, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -233,9 +349,9 @@ impl Display for IndexOutOfBoundsError {
     }
 }
 
-impl Error for IndexOutOfBoundsError {}
+impl<T: Debug + Display, S: Debug + Display> Error for IndexOutOfBoundsError<T, S> {}
 
-type IndexResult<T> = Result<T, IndexOutOfBoundsError>;
+type IndexResult<T, S, U> = Result<T, IndexOutOfBoundsError<S, U>>;
 
 ////////////
 /// Grid
@@ -319,7 +435,7 @@ impl<T> Grid<T> {
         self.rows
     }
 
-    pub fn get(&self, point: GridPoint) -> IndexResult<&T> {
+    pub fn get(&self, point: GridPoint<usize, isize>) -> IndexResult<&T, usize, isize> {
         if point.row > self.rows || point.col > self.cols {
             return IndexOutOfBoundsError::err(self.rows, self.cols, point);
         }
@@ -328,7 +444,7 @@ impl<T> Grid<T> {
             .ok_or(IndexOutOfBoundsError::new(self.rows, self.cols, point))
     }
 
-    pub fn get_mut(&mut self, point: GridPoint) -> IndexResult<&mut T> {
+    pub fn get_mut(&mut self, point: GridPoint<usize, isize>) -> IndexResult<&mut T, usize, isize> {
         if point.row > self.rows || point.col > self.cols {
             return IndexOutOfBoundsError::err(self.rows, self.cols, point);
         }
@@ -337,7 +453,11 @@ impl<T> Grid<T> {
             .ok_or(IndexOutOfBoundsError::new(self.rows, self.cols, point))
     }
 
-    pub fn set(&mut self, point: GridPoint, value: T) -> IndexResult<()> {
+    pub fn set(
+        &mut self,
+        point: GridPoint<usize, isize>,
+        value: T,
+    ) -> IndexResult<(), usize, isize> {
         if point.row > self.rows || point.col > self.cols {
             return IndexOutOfBoundsError::err(self.rows, self.cols, point);
         }
@@ -353,13 +473,37 @@ impl<T> Grid<T> {
     }
 }
 
+impl<T> Index<GridPoint<usize, isize>> for Grid<T> {
+    type Output = T;
+
+    fn index(&self, index: GridPoint<usize, isize>) -> &Self::Output {
+        self.get(index).unwrap()
+    }
+}
+
+impl<T> IndexMut<GridPoint<usize, isize>> for Grid<T> {
+    fn index_mut(&mut self, index: GridPoint<usize, isize>) -> &mut Self::Output {
+        self.get_mut(index).unwrap()
+    }
+}
+
+impl<T: PartialEq> Grid<T> {
+    pub fn find(&self, val: &T) -> Option<GridPoint<usize, isize>> {
+        self.grid
+            .iter()
+            .enumerate()
+            .find(|(_, v)| &val == v)
+            .map(|(idx, _)| GridPoint::of_arr_idx(idx, self.cols))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn grid_init_test() {
-        let grid_point: GridPoint = GridPoint::new(1, 1);
+        let grid_point: GridPoint<usize, isize> = GridPoint::new(1, 1);
         let grid: Grid<char> = Grid::from(
             "123
 456
@@ -376,59 +520,35 @@ mod tests {
 
     #[test]
     fn grid_iter_test() {
-        let grid_point: GridPoint = GridPoint::new(1, 1);
+        let grid_point: GridPoint<usize, isize> = GridPoint::new(1, 1);
         let step_by = SOUTH;
 
         assert_eq!(
             grid_point
-                .traverse_by(step_by, 5, 5)
-                .collect::<Vec<GridPoint>>(),
+                .traverse_by(step_by, 0, 5, 0, 5)
+                .collect::<Vec<GridPoint<usize, isize>>>(),
             vec![
-                GridPoint { row: 1, col: 1 },
-                GridPoint { row: 1, col: 2 },
-                GridPoint { row: 1, col: 3 },
-                GridPoint { row: 1, col: 4 }
+                GridPoint {
+                    row: 1,
+                    col: 1,
+                    _delta_type: PhantomData
+                },
+                GridPoint {
+                    row: 1,
+                    col: 2,
+                    _delta_type: PhantomData
+                },
+                GridPoint {
+                    row: 1,
+                    col: 3,
+                    _delta_type: PhantomData
+                },
+                GridPoint {
+                    row: 1,
+                    col: 4,
+                    _delta_type: PhantomData
+                }
             ]
         );
     }
 }
-
-/*
-pub struct MarkedGrid<const ROWS: usize, const COLS: usize, T: Ord>
-where
-    [(); ROWS * COLS]:,
-{
-    grid: Grid<ROWS, COLS, T>,
-    mask: Vector<{ ROWS * COLS }, bool>,
-}
-
-impl<const ROWS: usize, const COLS: usize, T: Ord> MarkedGrid<ROWS, COLS, T>
-where
-    [(); ROWS * COLS]:,
-{
-    pub fn new(grid: Grid<ROWS, COLS, T>) -> Self {
-        MarkedGrid {
-            grid,
-            mask: Vector::constant(false),
-        }
-    }
-
-    pub fn mark(&mut self, value: &T) {
-        if let Some(indicies) = self.grid.index_lookup.get(value) {
-            for idx in indicies {
-                self.mask[*idx] = true;
-            }
-        }
-    }
-}
-
-impl<const ROWS: usize, const COLS: usize, T: Ord> From<Grid<ROWS, COLS, T>>
-    for MarkedGrid<ROWS, COLS, T>
-where
-    [(); ROWS * COLS]:,
-{
-    fn from(value: Grid<ROWS, COLS, T>) -> Self {
-        MarkedGrid::new(value)
-    }
-}
-*/
