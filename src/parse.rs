@@ -795,6 +795,38 @@ mod parsers_internal {
             self.p.and_then(self.q).map(|(r, _)| r).parse(s)
         }
     }
+
+    // Maybe
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    pub struct Maybe<P> {
+        p: P,
+    }
+
+    impl<P> Maybe<P> {
+        pub fn new(p: P) -> Self {
+            Maybe { p }
+        }
+    }
+
+    impl<T, P> Parser for Maybe<P>
+    where
+        P: Parser<Output = T>,
+    {
+        type Output = Option<T>;
+
+        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
+            match self.p.parse(s) {
+                ParseState::Ok { result, rest } => ParseState::Ok {
+                    result: Some(result),
+                    rest,
+                },
+                ParseState::Err { .. } => ParseState::Ok {
+                    result: None,
+                    rest: s,
+                },
+            }
+        }
+    }
 }
 
 pub mod parsers {
@@ -942,6 +974,11 @@ pub trait Parser: Sized {
     #[inline]
     fn many_lines<'a>(self, terminator: &'a str) -> parsers_internal::ManyLines<'a, Self> {
         parsers_internal::ManyLines::new(terminator, self)
+    }
+
+    #[inline]
+    fn maybe(self) -> parsers_internal::Maybe<Self> {
+        parsers_internal::Maybe::new(self)
     }
 }
 
