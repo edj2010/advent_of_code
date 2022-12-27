@@ -1,3 +1,5 @@
+use std::cmp::{max, min};
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
@@ -77,6 +79,14 @@ impl<T, S> GridPoint<T, S> {
         }
     }
 
+    pub fn row(&self) -> &T {
+        &self.row
+    }
+
+    pub fn col(&self) -> &T {
+        &self.col
+    }
+
     pub fn add_checked(
         self,
         rhs: GridPointDelta<S>,
@@ -150,6 +160,30 @@ impl<T> GridPointDelta<T> {
             col_delta,
         }
     }
+
+    pub fn row_delta(&self) -> &T {
+        &self.row_delta
+    }
+
+    pub fn col_delta(&self) -> &T {
+        &self.col_delta
+    }
+}
+
+impl GridPointDelta<isize> {
+    pub fn l1_norm(self) -> isize {
+        self.row_delta.abs() + self.col_delta.abs()
+    }
+}
+
+fn gcd(a: isize, b: isize) -> isize {
+    if a < 0 || b < 0 {
+        gcd(a.abs(), b.abs())
+    } else if b == 0 {
+        a
+    } else {
+        gcd(b, a % b)
+    }
 }
 
 impl GridPointDelta<isize> {
@@ -157,6 +191,14 @@ impl GridPointDelta<isize> {
         GridPointDelta {
             row_delta: 0,
             col_delta: 0,
+        }
+    }
+
+    pub fn min_step(self) -> Self {
+        let div = gcd(self.row_delta, self.col_delta);
+        GridPointDelta {
+            row_delta: self.row_delta / div,
+            col_delta: self.col_delta / div,
         }
     }
 }
@@ -310,6 +352,32 @@ impl<T, S> GridPoint<T, S> {
     }
 }
 
+impl GridPoint<usize, isize> {
+    pub fn traverse_to(self, other: Self) -> GridPointIterator<usize, isize> {
+        GridPointIterator {
+            next: Some(self),
+            traverse_by: (other - self).unwrap().min_step(),
+            min_row: min(self.row, other.row),
+            max_row: max(self.row, other.row) + 1,
+            min_col: min(self.col, other.col),
+            max_col: max(self.col, other.col) + 1,
+        }
+    }
+}
+
+impl GridPoint<isize, isize> {
+    pub fn traverse_to(self, other: Self) -> GridPointIterator<isize, isize> {
+        GridPointIterator {
+            next: Some(self),
+            traverse_by: (other - self).unwrap().min_step(),
+            min_row: min(self.row, other.row),
+            max_row: max(self.row, other.row) + 1,
+            min_col: min(self.col, other.col),
+            max_col: max(self.col, other.col) + 1,
+        }
+    }
+}
+
 ////////////
 /// Index Out Of Bounds error
 ///
@@ -359,39 +427,12 @@ type IndexResult<T, S, U> = Result<T, IndexOutOfBoundsError<S, U>>;
 /// simple datastructure for holding a grid of values
 ////////////
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Grid<T> {
     rows: usize,
     cols: usize,
     grid: Vec<T>,
 }
-
-impl<T> Debug for Grid<T>
-where
-    T: Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {} {:?}", self.rows, self.cols, self.grid)
-    }
-}
-
-impl<T: Clone> Clone for Grid<T> {
-    #[inline]
-    fn clone(&self) -> Self {
-        Grid {
-            rows: self.rows,
-            cols: self.cols,
-            grid: self.grid.clone(),
-        }
-    }
-}
-
-impl<T: PartialEq> PartialEq for Grid<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.rows == other.rows && self.cols == other.cols && self.grid == other.grid
-    }
-}
-
-impl<T: Eq> Eq for Grid<T> {}
 
 impl<T: Clone> Grid<T> {
     pub fn init(init: T, rows: usize, cols: usize) -> Self {
@@ -497,6 +538,64 @@ impl<T: PartialEq> Grid<T> {
     }
 }
 
+////////////
+/// Lattice
+///
+/// similar interface to grid but allows for more efficient storage of
+/// sparse data and allows for negative indicies
+////////////
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Lattice<T> {
+    points: HashMap<GridPoint<isize, isize>, T>,
+}
+
+impl<T: Clone> Lattice<T> {
+    pub fn empty() -> Self {
+        Lattice {
+            points: HashMap::new(),
+        }
+    }
+}
+
+impl<T> Lattice<T> {
+    pub fn get(&self, point: GridPoint<isize, isize>) -> Option<&T> {
+        self.points.get(&point)
+    }
+
+    pub fn get_mut(&mut self, point: GridPoint<isize, isize>) -> Option<&mut T> {
+        self.points.get_mut(&point)
+    }
+
+    pub fn set(&mut self, point: GridPoint<isize, isize>, value: T) -> Option<T> {
+        self.points.insert(point, value)
+    }
+}
+
+impl<T> Index<GridPoint<isize, isize>> for Lattice<T> {
+    type Output = T;
+
+    fn index(&self, index: GridPoint<isize, isize>) -> &Self::Output {
+        self.get(index).unwrap()
+    }
+}
+
+impl<T> IndexMut<GridPoint<isize, isize>> for Lattice<T> {
+    fn index_mut(&mut self, index: GridPoint<isize, isize>) -> &mut Self::Output {
+        self.get_mut(index).unwrap()
+    }
+}
+
+impl<T: PartialEq> Lattice<T> {
+    pub fn find(&self, val: &T) -> Option<GridPoint<isize, isize>> {
+        self.points
+            .iter()
+            .find(|(_, v)| &val == v)
+            .map(|(idx, _)| idx)
+            .copied()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -552,3 +651,12 @@ mod tests {
         );
     }
 }
+
+////////////
+/// Block
+///
+/// very small grid, designed to be moved around,
+/// checked for intersection, and added to a lattice or grid
+////////////
+
+pub struct Block();

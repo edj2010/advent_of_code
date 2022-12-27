@@ -718,7 +718,7 @@ mod parsers_internal {
         type Output = T;
 
         fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
-            self.p.skip(parsers::tag(self.terminator)).parse(s)
+            self.p.skip_tag(self.terminator).parse(s)
         }
     }
 
@@ -925,6 +925,11 @@ pub trait Parser: Sized {
     #[inline]
     fn skip<Q>(self, other: Q) -> parsers_internal::Skip<Self, Q> {
         parsers_internal::Skip::new(self, other)
+    }
+
+    #[inline]
+    fn skip_tag(self, tag: &str) -> parsers_internal::Skip<Self, parsers_internal::Tag> {
+        parsers_internal::Skip::new(self, parsers::tag(tag))
     }
 
     #[inline]
