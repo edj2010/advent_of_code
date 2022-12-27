@@ -2,7 +2,6 @@ use std::cmp::{max, min};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Debug, Display};
-use std::marker::PhantomData;
 use std::ops::{Add, Div, Index, IndexMut, Mul, Neg, Rem, Sub};
 
 /////////////
@@ -11,13 +10,12 @@ use std::ops::{Add, Div, Index, IndexMut, Mul, Neg, Rem, Sub};
 /// datastructure for indexing a grid
 /////////////
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct GridPoint<T, S> {
+pub struct GridPoint<T> {
     row: T,
     col: T,
-    _delta_type: PhantomData<S>,
 }
 
-impl<T, S> Debug for GridPoint<T, S>
+impl<T> Debug for GridPoint<T>
 where
     T: Debug,
 {
@@ -26,7 +24,7 @@ where
     }
 }
 
-impl<T, S> Display for GridPoint<T, S>
+impl<T> Display for GridPoint<T>
 where
     T: Display,
 {
@@ -35,11 +33,11 @@ where
     }
 }
 
-impl<T, S> Add<GridPointDelta<S>> for GridPoint<T, S>
+impl<T, S> Add<GridPointDelta<S>> for GridPoint<T>
 where
     S: TryInto<T> + Add<S, Output = S> + TryFrom<T>,
 {
-    type Output = Option<GridPoint<T, S>>;
+    type Output = Option<GridPoint<T>>;
 
     fn add(self, rhs: GridPointDelta<S>) -> Self::Output {
         let row: T = (S::try_from(self.row).ok()? + rhs.row_delta)
@@ -53,30 +51,9 @@ where
     }
 }
 
-impl<T, S> Sub<GridPoint<T, S>> for GridPoint<T, S>
-where
-    T: TryInto<S>,
-    S: Sub<S, Output = S> + TryFrom<T>,
-{
-    type Output = Option<GridPointDelta<S>>;
-
-    fn sub(self, rhs: GridPoint<T, S>) -> Self::Output {
-        let row_delta: S = S::try_from(self.row).ok()? - S::try_from(rhs.row).ok()?;
-        let col_delta: S = S::try_from(self.col).ok()? - S::try_from(rhs.col).ok()?;
-        Some(GridPointDelta {
-            row_delta,
-            col_delta,
-        })
-    }
-}
-
-impl<T, S> GridPoint<T, S> {
+impl<T> GridPoint<T> {
     pub fn new(row: T, col: T) -> Self {
-        GridPoint {
-            row,
-            col,
-            _delta_type: PhantomData,
-        }
+        GridPoint { row, col }
     }
 
     pub fn row(&self) -> &T {
@@ -87,7 +64,19 @@ impl<T, S> GridPoint<T, S> {
         &self.col
     }
 
-    pub fn add_checked(
+    pub fn sub<S>(self, rhs: Self) -> Option<GridPointDelta<S>>
+    where
+        S: TryInto<T> + Sub<S, Output = S> + TryFrom<T>,
+    {
+        let row_delta: S = S::try_from(self.row).ok()? - S::try_from(rhs.row).ok()?;
+        let col_delta: S = S::try_from(self.col).ok()? - S::try_from(rhs.col).ok()?;
+        Some(GridPointDelta {
+            row_delta,
+            col_delta,
+        })
+    }
+
+    pub fn add_checked<S>(
         self,
         rhs: GridPointDelta<S>,
         min_row: &T,
@@ -127,7 +116,6 @@ impl<T, S> GridPoint<T, S> {
         GridPoint {
             row: arr_idx.clone() / cols.clone(),
             col: arr_idx % cols,
-            _delta_type: PhantomData,
         }
     }
 }
@@ -301,7 +289,7 @@ pub const ADJACENT: [GridPointDelta<isize>; 8] = [
 ////////////
 
 pub struct GridPointIterator<T, S> {
-    next: Option<GridPoint<T, S>>,
+    next: Option<GridPoint<T>>,
     traverse_by: GridPointDelta<S>,
     min_row: T,
     max_row: T,
@@ -314,7 +302,7 @@ where
     S: TryInto<T> + Add<S, Output = S> + TryFrom<T> + Clone,
     T: PartialOrd + Clone,
 {
-    type Item = GridPoint<T, S>;
+    type Item = GridPoint<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(next) = self.next.clone() {
@@ -332,8 +320,8 @@ where
     }
 }
 
-impl<T, S> GridPoint<T, S> {
-    pub fn traverse_by(
+impl<T> GridPoint<T> {
+    pub fn traverse_by<S>(
         self,
         traverse_by: GridPointDelta<S>,
         min_row: T,
@@ -352,29 +340,29 @@ impl<T, S> GridPoint<T, S> {
     }
 }
 
-impl GridPoint<usize, isize> {
-    pub fn traverse_to(self, other: Self) -> GridPointIterator<usize, isize> {
-        GridPointIterator {
+impl GridPoint<usize> {
+    pub fn traverse_to(self, other: Self) -> Option<GridPointIterator<usize, isize>> {
+        Some(GridPointIterator {
             next: Some(self),
-            traverse_by: (other - self).unwrap().min_step(),
+            traverse_by: other.sub(self)?.min_step(),
             min_row: min(self.row, other.row),
             max_row: max(self.row, other.row) + 1,
             min_col: min(self.col, other.col),
             max_col: max(self.col, other.col) + 1,
-        }
+        })
     }
 }
 
-impl GridPoint<isize, isize> {
-    pub fn traverse_to(self, other: Self) -> GridPointIterator<isize, isize> {
-        GridPointIterator {
+impl GridPoint<isize> {
+    pub fn traverse_to(self, other: Self) -> Option<GridPointIterator<isize, isize>> {
+        Some(GridPointIterator {
             next: Some(self),
-            traverse_by: (other - self).unwrap().min_step(),
+            traverse_by: other.sub(self)?.min_step(),
             min_row: min(self.row, other.row),
             max_row: max(self.row, other.row) + 1,
             min_col: min(self.col, other.col),
             max_col: max(self.col, other.col) + 1,
-        }
+        })
     }
 }
 
@@ -385,15 +373,15 @@ impl GridPoint<isize, isize> {
 ////////////
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct IndexOutOfBoundsError<T, S> {
+pub struct IndexOutOfBoundsError<T> {
     rows: usize,
     cols: usize,
-    attempted: GridPoint<T, S>,
+    attempted: GridPoint<T>,
 }
 
-impl<T, S> IndexOutOfBoundsError<T, S> {
+impl<T> IndexOutOfBoundsError<T> {
     #[inline]
-    fn new(rows: usize, cols: usize, attempted: GridPoint<T, S>) -> Self {
+    fn new(rows: usize, cols: usize, attempted: GridPoint<T>) -> Self {
         IndexOutOfBoundsError {
             rows,
             cols,
@@ -402,12 +390,12 @@ impl<T, S> IndexOutOfBoundsError<T, S> {
     }
 
     #[inline]
-    fn err<U>(rows: usize, cols: usize, attempted: GridPoint<T, S>) -> IndexResult<U, T, S> {
+    fn err<U>(rows: usize, cols: usize, attempted: GridPoint<T>) -> IndexResult<U, T> {
         Result::Err(IndexOutOfBoundsError::new(rows, cols, attempted))
     }
 }
 
-impl<T: Display, S> Display for IndexOutOfBoundsError<T, S> {
+impl<T: Display> Display for IndexOutOfBoundsError<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -417,9 +405,9 @@ impl<T: Display, S> Display for IndexOutOfBoundsError<T, S> {
     }
 }
 
-impl<T: Debug + Display, S: Debug + Display> Error for IndexOutOfBoundsError<T, S> {}
+impl<T: Debug + Display> Error for IndexOutOfBoundsError<T> {}
 
-type IndexResult<T, S, U> = Result<T, IndexOutOfBoundsError<S, U>>;
+type IndexResult<T, S> = Result<T, IndexOutOfBoundsError<S>>;
 
 ////////////
 /// Grid
@@ -476,7 +464,7 @@ impl<T> Grid<T> {
         self.rows
     }
 
-    pub fn get(&self, point: GridPoint<usize, isize>) -> IndexResult<&T, usize, isize> {
+    pub fn get(&self, point: GridPoint<usize>) -> IndexResult<&T, usize> {
         if point.row > self.rows || point.col > self.cols {
             return IndexOutOfBoundsError::err(self.rows, self.cols, point);
         }
@@ -485,7 +473,7 @@ impl<T> Grid<T> {
             .ok_or(IndexOutOfBoundsError::new(self.rows, self.cols, point))
     }
 
-    pub fn get_mut(&mut self, point: GridPoint<usize, isize>) -> IndexResult<&mut T, usize, isize> {
+    pub fn get_mut(&mut self, point: GridPoint<usize>) -> IndexResult<&mut T, usize> {
         if point.row > self.rows || point.col > self.cols {
             return IndexOutOfBoundsError::err(self.rows, self.cols, point);
         }
@@ -494,11 +482,7 @@ impl<T> Grid<T> {
             .ok_or(IndexOutOfBoundsError::new(self.rows, self.cols, point))
     }
 
-    pub fn set(
-        &mut self,
-        point: GridPoint<usize, isize>,
-        value: T,
-    ) -> IndexResult<(), usize, isize> {
+    pub fn set(&mut self, point: GridPoint<usize>, value: T) -> IndexResult<(), usize> {
         if point.row > self.rows || point.col > self.cols {
             return IndexOutOfBoundsError::err(self.rows, self.cols, point);
         }
@@ -514,22 +498,22 @@ impl<T> Grid<T> {
     }
 }
 
-impl<T> Index<GridPoint<usize, isize>> for Grid<T> {
+impl<T> Index<GridPoint<usize>> for Grid<T> {
     type Output = T;
 
-    fn index(&self, index: GridPoint<usize, isize>) -> &Self::Output {
+    fn index(&self, index: GridPoint<usize>) -> &Self::Output {
         self.get(index).unwrap()
     }
 }
 
-impl<T> IndexMut<GridPoint<usize, isize>> for Grid<T> {
-    fn index_mut(&mut self, index: GridPoint<usize, isize>) -> &mut Self::Output {
+impl<T> IndexMut<GridPoint<usize>> for Grid<T> {
+    fn index_mut(&mut self, index: GridPoint<usize>) -> &mut Self::Output {
         self.get_mut(index).unwrap()
     }
 }
 
 impl<T: PartialEq> Grid<T> {
-    pub fn find(&self, val: &T) -> Option<GridPoint<usize, isize>> {
+    pub fn find(&self, val: &T) -> Option<GridPoint<usize>> {
         self.grid
             .iter()
             .enumerate()
@@ -547,7 +531,7 @@ impl<T: PartialEq> Grid<T> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Lattice<T> {
-    points: HashMap<GridPoint<isize, isize>, T>,
+    points: HashMap<GridPoint<isize>, T>,
 }
 
 impl<T: Clone> Lattice<T> {
@@ -559,35 +543,35 @@ impl<T: Clone> Lattice<T> {
 }
 
 impl<T> Lattice<T> {
-    pub fn get(&self, point: GridPoint<isize, isize>) -> Option<&T> {
+    pub fn get(&self, point: GridPoint<isize>) -> Option<&T> {
         self.points.get(&point)
     }
 
-    pub fn get_mut(&mut self, point: GridPoint<isize, isize>) -> Option<&mut T> {
+    pub fn get_mut(&mut self, point: GridPoint<isize>) -> Option<&mut T> {
         self.points.get_mut(&point)
     }
 
-    pub fn set(&mut self, point: GridPoint<isize, isize>, value: T) -> Option<T> {
+    pub fn set(&mut self, point: GridPoint<isize>, value: T) -> Option<T> {
         self.points.insert(point, value)
     }
 }
 
-impl<T> Index<GridPoint<isize, isize>> for Lattice<T> {
+impl<T> Index<GridPoint<isize>> for Lattice<T> {
     type Output = T;
 
-    fn index(&self, index: GridPoint<isize, isize>) -> &Self::Output {
+    fn index(&self, index: GridPoint<isize>) -> &Self::Output {
         self.get(index).unwrap()
     }
 }
 
-impl<T> IndexMut<GridPoint<isize, isize>> for Lattice<T> {
-    fn index_mut(&mut self, index: GridPoint<isize, isize>) -> &mut Self::Output {
+impl<T> IndexMut<GridPoint<isize>> for Lattice<T> {
+    fn index_mut(&mut self, index: GridPoint<isize>) -> &mut Self::Output {
         self.get_mut(index).unwrap()
     }
 }
 
 impl<T: PartialEq> Lattice<T> {
-    pub fn find(&self, val: &T) -> Option<GridPoint<isize, isize>> {
+    pub fn find(&self, val: &T) -> Option<GridPoint<isize>> {
         self.points
             .iter()
             .find(|(_, v)| &val == v)
@@ -602,7 +586,7 @@ mod tests {
 
     #[test]
     fn grid_init_test() {
-        let grid_point: GridPoint<usize, isize> = GridPoint::new(1, 1);
+        let grid_point: GridPoint<usize> = GridPoint::new(1, 1);
         let grid: Grid<char> = Grid::from(
             "123
 456
@@ -619,34 +603,18 @@ mod tests {
 
     #[test]
     fn grid_iter_test() {
-        let grid_point: GridPoint<usize, isize> = GridPoint::new(1, 1);
+        let grid_point: GridPoint<usize> = GridPoint::new(1, 1);
         let step_by = SOUTH;
 
         assert_eq!(
             grid_point
                 .traverse_by(step_by, 0, 5, 0, 5)
-                .collect::<Vec<GridPoint<usize, isize>>>(),
+                .collect::<Vec<GridPoint<usize>>>(),
             vec![
-                GridPoint {
-                    row: 1,
-                    col: 1,
-                    _delta_type: PhantomData
-                },
-                GridPoint {
-                    row: 1,
-                    col: 2,
-                    _delta_type: PhantomData
-                },
-                GridPoint {
-                    row: 1,
-                    col: 3,
-                    _delta_type: PhantomData
-                },
-                GridPoint {
-                    row: 1,
-                    col: 4,
-                    _delta_type: PhantomData
-                }
+                GridPoint { row: 1, col: 1 },
+                GridPoint { row: 1, col: 2 },
+                GridPoint { row: 1, col: 3 },
+                GridPoint { row: 1, col: 4 }
             ]
         );
     }
