@@ -580,6 +580,84 @@ impl<T: PartialEq> Lattice<T> {
     }
 }
 
+////////////
+/// Block
+///
+/// very small grid, designed to be moved around,
+/// checked for intersection, and added to a lattice or grid
+////////////
+
+pub struct Block<T>(Vec<GridPoint<T>>);
+
+impl<T> Block<T> {
+    pub fn empty() -> Self {
+        Block(Vec::new())
+    }
+
+    pub fn from<I: IntoIterator<Item = GridPoint<T>>>(iter: I) -> Self {
+        Block(iter.into_iter().collect())
+    }
+
+    pub fn add_point(&mut self, point: GridPoint<T>) {
+        self.0.push(point);
+    }
+
+    pub fn intersects(&self, other: &Self) -> bool
+    where
+        T: PartialEq,
+    {
+        self.0.iter().any(|p| other.0.contains(p))
+    }
+
+    pub fn min_row(&self) -> Option<&T>
+    where
+        T: Ord,
+    {
+        self.0.iter().map(|p| p.row()).min()
+    }
+
+    pub fn max_row(&self) -> Option<&T>
+    where
+        T: Ord,
+    {
+        self.0.iter().map(|p| p.row()).max()
+    }
+
+    pub fn min_col(&self) -> Option<&T>
+    where
+        T: Ord,
+    {
+        self.0.iter().map(|p| p.col()).min()
+    }
+
+    pub fn max_col(&self) -> Option<&T>
+    where
+        T: Ord,
+    {
+        self.0.iter().map(|p| p.col()).max()
+    }
+}
+
+impl<T, S> Add<GridPointDelta<S>> for Block<T>
+where
+    S: TryInto<T> + Add<S, Output = S> + TryFrom<T> + Clone,
+{
+    type Output = Option<Block<T>>;
+
+    fn add(self, rhs: GridPointDelta<S>) -> Self::Output {
+        Some(Block(
+            self.0
+                .into_iter()
+                .map(|p| p + rhs.clone())
+                .collect::<Option<Vec<GridPoint<T>>>>()?,
+        ))
+    }
+}
+
+////////////
+/// Tests
+////////////
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -619,12 +697,3 @@ mod tests {
         );
     }
 }
-
-////////////
-/// Block
-///
-/// very small grid, designed to be moved around,
-/// checked for intersection, and added to a lattice or grid
-////////////
-
-pub struct Block();
