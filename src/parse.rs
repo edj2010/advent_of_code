@@ -583,12 +583,12 @@ mod parsers_internal {
     // Repeat
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     pub struct Repeat<P> {
-        count: usize,
+        count: u32,
         p: P,
     }
 
     impl<P> Repeat<P> {
-        pub fn new(count: usize, p: P) -> Self {
+        pub fn new(count: u32, p: P) -> Self {
             Repeat { count, p }
         }
     }
@@ -627,14 +627,14 @@ mod parsers_internal {
     }
 
     impl<'b> Parser for Number<'b> {
-        type Output = usize;
+        type Output = u32;
 
         fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
             parsers::chars(|c: char| c.is_numeric() || self.0.contains(c))
                 .many()
                 .bind(|v: ManyIter<char>| {
                     let s = v.filter(|c: &char| c.is_numeric()).collect::<String>();
-                    s.parse::<usize>().map_err(|_| ParseError::ParseIntError(s))
+                    s.parse::<u32>().map_err(|_| ParseError::ParseIntError(s))
                 })
                 .parse(s)
         }
@@ -651,13 +651,13 @@ mod parsers_internal {
     }
 
     impl<'b> Parser for SignedNumber<'b> {
-        type Output = isize;
+        type Output = i32;
 
         fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
             parsers::char('-')
                 .ignore(parsers::number_with_seps(self.0))
-                .map(|n| -(n as isize))
-                .or(parsers::number_with_seps(self.0).map(|n| n as isize))
+                .map(|n| -(n as i32))
+                .or(parsers::number_with_seps(self.0).map(|n| n as i32))
                 .parse(s)
         }
     }
@@ -952,7 +952,7 @@ pub trait Parser: Sized {
     }
 
     #[inline]
-    fn repeat(self, count: usize) -> parsers_internal::Repeat<Self> {
+    fn repeat(self, count: u32) -> parsers_internal::Repeat<Self> {
         parsers_internal::Repeat::new(count, self)
     }
 
@@ -1172,29 +1172,29 @@ mod tests {
         );
         assert_eq!(
             parsers::chars(|c: char| c.is_numeric())
-                .map(|c: char| c.to_string().parse::<usize>().unwrap())
+                .map(|c: char| c.to_string().parse::<u32>().unwrap())
                 .list(",")
                 .parse("1,2,3,4,5")
                 .finish()
-                .map(|v| v.collect::<Vec<usize>>()),
+                .map(|v| v.collect::<Vec<u32>>()),
             Ok(vec![1, 2, 3, 4, 5])
         );
         assert_eq!(
             parsers::chars(|c: char| c.is_numeric())
-                .map(|c: char| c.to_string().parse::<usize>().unwrap())
+                .map(|c: char| c.to_string().parse::<u32>().unwrap())
                 .list(",")
                 .parse("1,2,3,4,5,")
                 .finish()
-                .map(|v| v.collect::<Vec<usize>>()),
+                .map(|v| v.collect::<Vec<u32>>()),
             Err((ParseError::RemainingUnparsed, ","))
         );
         assert_eq!(
             parsers::any()
-                .map(|s: String| s.parse::<usize>().unwrap())
+                .map(|s: String| s.parse::<u32>().unwrap())
                 .list(",")
                 .parse("12345")
                 .finish()
-                .map(|v| v.collect::<Vec<usize>>()),
+                .map(|v| v.collect::<Vec<u32>>()),
             Ok(vec![12345])
         );
         assert_eq!(
@@ -1207,7 +1207,7 @@ mod tests {
                 )
                 .finish()
                 .unwrap()
-                .collect::<Vec<usize>>(),
+                .collect::<Vec<u32>>(),
             vec![123, 456]
         )
     }
@@ -1271,8 +1271,8 @@ bjgGqQGbQnjGQgnQgbGgjJnDLHLdfPVtdDmLZdBFVVZttdTf
             .parse(input)
             .finish()
             .unwrap()
-            .map(|v| v.collect::<Vec<usize>>())
-            .collect::<Vec<Vec<usize>>>();
+            .map(|v| v.collect::<Vec<u32>>())
+            .collect::<Vec<Vec<u32>>>();
 
         assert_eq!(result, vec![vec![123, 456], vec![789, 123]]);
     }
@@ -1463,14 +1463,14 @@ bjgGqQGbQnjGQgnQgbGgjJnDLHLdfPVtdDmLZdBFVVZttdTf
         );
         assert_eq!(
             parsers::any()
-                .bind(|s: String| s.parse::<usize>().map_err(|_| ParseError::ParseIntError(s)))
+                .bind(|s: String| s.parse::<u32>().map_err(|_| ParseError::ParseIntError(s)))
                 .parse("123")
                 .finish(),
             Ok(123)
         );
         assert_eq!(
             parsers::any()
-                .bind(|s: String| s.parse::<usize>().map_err(|_| ParseError::ParseIntError(s)))
+                .bind(|s: String| s.parse::<u32>().map_err(|_| ParseError::ParseIntError(s)))
                 .parse("a123")
                 .finish(),
             Err((ParseError::ParseIntError("a123".to_string()), "a123"))

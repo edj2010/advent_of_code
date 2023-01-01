@@ -164,10 +164,27 @@ impl GridPointDelta<isize> {
     }
 }
 
-fn gcd(a: isize, b: isize) -> isize {
-    if a < 0 || b < 0 {
-        gcd(a.abs(), b.abs())
-    } else if b == 0 {
+impl GridPointDelta<i32> {
+    pub fn l1_norm(self) -> i32 {
+        self.row_delta.abs() + self.col_delta.abs()
+    }
+}
+
+impl GridPointDelta<i64> {
+    pub fn l1_norm(self) -> i64 {
+        self.row_delta.abs() + self.col_delta.abs()
+    }
+}
+
+fn gcd<T>(a: T, b: T) -> T
+where
+    T: Default + Ord + Neg<Output = T> + Rem<T, Output = T> + Copy,
+{
+    if a < T::default() {
+        gcd(-a, b)
+    } else if b < T::default() {
+        gcd(a, -b)
+    } else if b == T::default() {
         a
     } else {
         gcd(b, a % b)
@@ -238,33 +255,33 @@ pub const ZERO: GridPointDelta<isize> = GridPointDelta {
     col_delta: 0,
 };
 pub const NORTH: GridPointDelta<isize> = GridPointDelta {
-    row_delta: 0,
-    col_delta: -1,
-};
-pub const EAST: GridPointDelta<isize> = GridPointDelta {
-    row_delta: 1,
-    col_delta: 0,
-};
-pub const SOUTH: GridPointDelta<isize> = GridPointDelta {
-    row_delta: 0,
-    col_delta: 1,
-};
-pub const WEST: GridPointDelta<isize> = GridPointDelta {
     row_delta: -1,
     col_delta: 0,
 };
+pub const EAST: GridPointDelta<isize> = GridPointDelta {
+    row_delta: 0,
+    col_delta: 1,
+};
+pub const SOUTH: GridPointDelta<isize> = GridPointDelta {
+    row_delta: 1,
+    col_delta: 0,
+};
+pub const WEST: GridPointDelta<isize> = GridPointDelta {
+    row_delta: 0,
+    col_delta: -1,
+};
 
 pub const NORTHEAST: GridPointDelta<isize> = GridPointDelta {
-    row_delta: 1,
-    col_delta: -1,
+    row_delta: -1,
+    col_delta: 1,
 };
 pub const SOUTHEAST: GridPointDelta<isize> = GridPointDelta {
     row_delta: 1,
     col_delta: 1,
 };
 pub const SOUTHWEST: GridPointDelta<isize> = GridPointDelta {
-    row_delta: -1,
-    col_delta: 1,
+    row_delta: 1,
+    col_delta: -1,
 };
 pub const NORTHWEST: GridPointDelta<isize> = GridPointDelta {
     row_delta: -1,
@@ -543,6 +560,10 @@ impl<T: Clone> Lattice<T> {
 }
 
 impl<T> Lattice<T> {
+    pub fn contains(&self, point: GridPoint<isize>) -> bool {
+        self.get(point).is_some()
+    }
+
     pub fn get(&self, point: GridPoint<isize>) -> Option<&T> {
         self.points.get(&point)
     }
@@ -553,6 +574,19 @@ impl<T> Lattice<T> {
 
     pub fn set(&mut self, point: GridPoint<isize>, value: T) -> Option<T> {
         self.points.insert(point, value)
+    }
+
+    pub fn intersects_block(&self, block: &Block<isize>) -> bool {
+        block.0.iter().any(|p| self.contains(*p))
+    }
+
+    pub fn set_block(&mut self, block: Block<isize>, value: T)
+    where
+        T: Clone,
+    {
+        block.0.into_iter().for_each(|p| {
+            self.set(p, value.clone());
+        })
     }
 }
 
@@ -587,6 +621,7 @@ impl<T: PartialEq> Lattice<T> {
 /// checked for intersection, and added to a lattice or grid
 ////////////
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Block<T>(Vec<GridPoint<T>>);
 
 impl<T> Block<T> {

@@ -1,11 +1,15 @@
 use std::ops::{Add, BitAnd, BitOr, BitXor, Index, IndexMut, Sub};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Vector<const SIZE: usize, T> {
     data: [T; SIZE],
 }
 
 impl<const SIZE: usize, T> Vector<SIZE, T> {
+    pub fn of_raw(data: [T; SIZE]) -> Self {
+        Vector { data }
+    }
+
     pub fn of_list(l: Vec<T>) -> Result<Self, Vec<T>> {
         Ok(Vector {
             data: l.try_into()?,
@@ -49,19 +53,6 @@ impl<const SIZE: usize, T> IndexMut<usize> for Vector<SIZE, T> {
         &mut self.data[index]
     }
 }
-
-impl<const SIZE: usize, T> Clone for Vector<SIZE, T>
-where
-    T: Clone,
-{
-    fn clone(&self) -> Self {
-        Vector {
-            data: self.data.clone(),
-        }
-    }
-}
-
-impl<const SIZE: usize, T> Copy for Vector<SIZE, T> where T: Copy {}
 
 impl<const SIZE: usize, T> Add<Self> for Vector<SIZE, T>
 where

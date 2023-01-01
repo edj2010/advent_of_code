@@ -29,13 +29,13 @@ impl AdventOfCode {
         })
     }
 
-    fn question_input_path(&self, question: usize) -> Result<PathBuf, Box<dyn Error>> {
+    fn question_input_path(&self, question: u32) -> Result<PathBuf, Box<dyn Error>> {
         let base_name = PathBuf::from_str(&format!("{}.in", question))?;
         Ok(self.input_cache.join(base_name))
     }
 
     #[allow(dead_code)]
-    pub fn query_question_input(&self, question: usize) -> Result<String, Box<dyn Error>> {
+    pub fn query_question_input(&self, question: u32) -> Result<String, Box<dyn Error>> {
         let cache_path = self.question_input_path(question)?;
         if cache_path.is_file() {
             Ok(fs::read_to_string(cache_path)?)
