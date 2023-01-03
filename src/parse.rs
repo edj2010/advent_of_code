@@ -559,6 +559,36 @@ mod parsers_internal {
         }
     }
 
+    // At least one
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    pub struct AtLeastOne<P> {
+        p: P,
+    }
+
+    impl<P> AtLeastOne<P> {
+        pub fn new(p: P) -> Self {
+            AtLeastOne { p }
+        }
+    }
+
+    impl<T, P> Parser for AtLeastOne<P>
+    where
+        P: Parser<Output = T> + Clone,
+    {
+        type Output = ManyIter<T>;
+
+        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
+            self.p
+                .clone()
+                .and_then(self.p.many())
+                .map(|(t, mut ts)| {
+                    ts.contents.push_front(t);
+                    ts
+                })
+                .parse(s)
+        }
+    }
+
     // ManyChars
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     pub struct ManyChars<F: Fn(char) -> bool>(F);
@@ -977,6 +1007,11 @@ pub trait Parser: Sized {
     }
 
     #[inline]
+    fn many_at_least_one(self) -> parsers_internal::AtLeastOne<Self> {
+        parsers_internal::AtLeastOne::new(self)
+    }
+
+    #[inline]
     fn many_lines<'a>(self, terminator: &'a str) -> parsers_internal::ManyLines<'a, Self> {
         parsers_internal::ManyLines::new(terminator, self)
     }
@@ -1100,6 +1135,42 @@ mod tests {
                 .finish()
                 .map(|v| v.collect::<Vec<char>>()),
             Err((ParseError::RemainingUnparsed, " ab"))
+        );
+        assert_eq!(
+            parsers::chars(|c: char| c.is_numeric())
+                .many()
+                .parse("")
+                .finish()
+                .map(|v| v.collect::<Vec<char>>()),
+            Ok(vec![])
+        );
+    }
+
+    #[test]
+    fn at_least_one() {
+        assert_eq!(
+            parsers::chars(|c: char| c.is_numeric())
+                .many_at_least_one()
+                .parse("12345")
+                .finish()
+                .map(|v| v.collect::<Vec<char>>()),
+            Ok(vec!['1', '2', '3', '4', '5'])
+        );
+        assert_eq!(
+            parsers::chars(|c: char| c.is_numeric())
+                .many_at_least_one()
+                .parse("12345 ab")
+                .finish()
+                .map(|v| v.collect::<Vec<char>>()),
+            Err((ParseError::RemainingUnparsed, " ab"))
+        );
+        assert_eq!(
+            parsers::chars(|c: char| c.is_numeric())
+                .many_at_least_one()
+                .parse("")
+                .finish()
+                .map(|v| v.collect::<Vec<char>>()),
+            Err((ParseError::EndOfString, ""))
         );
     }
 

@@ -11,8 +11,8 @@ use std::ops::{Add, Div, Index, IndexMut, Mul, Neg, Rem, Sub};
 /////////////
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct GridPoint<T> {
-    row: T,
-    col: T,
+    pub row: T,
+    pub col: T,
 }
 
 impl<T> Debug for GridPoint<T>
@@ -246,6 +246,58 @@ where
         GridPointDelta {
             row_delta: self.row_delta * rhs.clone(),
             col_delta: self.col_delta * rhs,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Direction {
+    North,
+    East,
+    South,
+    West,
+}
+
+impl Direction {
+    pub fn rotate_left(self) -> Self {
+        match self {
+            Self::North => Self::West,
+            Self::East => Self::North,
+            Self::South => Self::East,
+            Self::West => Self::South,
+        }
+    }
+
+    pub fn rotate_right(self) -> Self {
+        match self {
+            Self::North => Self::East,
+            Self::East => Self::South,
+            Self::South => Self::West,
+            Self::West => Self::North,
+        }
+    }
+}
+
+impl From<Direction> for GridPointDelta<isize> {
+    fn from(value: Direction) -> Self {
+        match value {
+            Direction::North => NORTH,
+            Direction::East => EAST,
+            Direction::South => SOUTH,
+            Direction::West => WEST,
+        }
+    }
+}
+
+impl Neg for Direction {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        match self {
+            Direction::North => Direction::South,
+            Direction::East => Direction::West,
+            Direction::South => Direction::North,
+            Direction::West => Direction::East,
         }
     }
 }
@@ -556,6 +608,14 @@ impl<T: Clone> Lattice<T> {
         Lattice {
             points: HashMap::new(),
         }
+    }
+
+    pub fn from<I: IntoIterator<Item = (GridPoint<isize>, T)>>(iter: I) -> Self {
+        let mut lattice = Self::empty();
+        for (point, value) in iter.into_iter() {
+            lattice.set(point, value);
+        }
+        lattice
     }
 }
 
