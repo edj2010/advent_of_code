@@ -1,9 +1,11 @@
+use crate::day::Day;
 use reqwest::{blocking::Client, cookie::Jar, Url};
-use std::error::Error;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
-use std::sync::Arc;
+use std::{
+    error::Error,
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 const BASE_URL: &str = "https://adventofcode.com/";
 
@@ -29,24 +31,36 @@ impl AdventOfCode {
         })
     }
 
-    fn question_input_path(&self, question: u32) -> Result<PathBuf, Box<dyn Error>> {
-        let base_name = PathBuf::from_str(&format!("{}.in", question))?;
-        Ok(self.input_cache.join(base_name))
+    fn question_input_path(&self, day: Day) -> PathBuf {
+        self.input_cache.join(day.to_filename())
+    }
+
+    fn query_question_input(&self, day: Day) -> Result<String, reqwest::Error> {
+        self.web_client
+            .get(day.to_web_input_path(&self.base_url))
+            .send()?
+            .text()
     }
 
     #[allow(dead_code)]
-    pub fn query_question_input(&self, question: u32) -> Result<String, Box<dyn Error>> {
-        let cache_path = self.question_input_path(question)?;
-        if cache_path.is_file() {
-            Ok(fs::read_to_string(cache_path)?)
-        } else {
+    pub fn load_question_input(&self, day: Day) -> String {
+        let cache_path = self.question_input_path(day);
+        fs::read_to_string(cache_path.clone()).unwrap_or_else(|_| {
             let text = self
-                .web_client
-                .get(format!("{}{}/input", self.base_url, question))
-                .send()?
-                .text()?;
-            fs::write(cache_path, text.clone())?;
-            Ok(text)
-        }
+                .query_question_input(day)
+                .expect("Failed to query question input from server");
+            fs::write(cache_path, text.clone()).expect("Failed to write text to file");
+            text
+        })
     }
+}
+
+pub fn load_question_input(year: &str, cookie_path: &str, day: Day) -> String {
+    AdventOfCode::init(
+        year,
+        &fs::read_to_string(cookie_path).expect("Failed to read session id"),
+        Path::new("inputs"),
+    )
+    .expect("Failed to initialize client")
+    .load_question_input(day)
 }

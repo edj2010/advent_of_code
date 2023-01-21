@@ -5,6 +5,7 @@
 #![feature(return_position_impl_trait_in_trait)]
 #![allow(incomplete_features)]
 
+pub mod day;
 pub mod grid;
 pub mod parse;
 pub mod search;
