@@ -30,7 +30,38 @@ pub enum Day {
 }
 
 impl Day {
-    fn to_numeric(self) -> u8 {
+    pub fn of_numeric(day: u8) -> Self {
+        match day {
+            1 => Day::Day01,
+            2 => Day::Day02,
+            3 => Day::Day03,
+            4 => Day::Day04,
+            5 => Day::Day05,
+            6 => Day::Day06,
+            7 => Day::Day07,
+            8 => Day::Day08,
+            9 => Day::Day09,
+            10 => Day::Day10,
+            11 => Day::Day11,
+            12 => Day::Day12,
+            13 => Day::Day13,
+            14 => Day::Day14,
+            15 => Day::Day15,
+            16 => Day::Day16,
+            17 => Day::Day17,
+            18 => Day::Day18,
+            19 => Day::Day19,
+            20 => Day::Day20,
+            21 => Day::Day21,
+            22 => Day::Day22,
+            23 => Day::Day23,
+            24 => Day::Day24,
+            25 => Day::Day25,
+            _ => panic!("{} did not match a valid day (1 through 25)", day),
+        }
+    }
+
+    pub fn to_numeric(self) -> u8 {
         match self {
             Day::Day01 => 1,
             Day::Day02 => 2,
@@ -65,6 +96,7 @@ impl Day {
     }
 
     pub fn to_filename(self) -> PathBuf {
-        PathBuf::from_str(&format!("{}.in", self.to_numeric())).expect("Could not generate filename from path")
+        PathBuf::from_str(&format!("{}.in", self.to_numeric()))
+            .expect("Could not generate filename from path")
     }
 }
