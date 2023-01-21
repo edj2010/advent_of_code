@@ -55,11 +55,11 @@ impl AdventOfCode {
     }
 }
 
-pub fn load_question_input(year: &str, cookie_path: &str, day: Day) -> String {
+pub fn load_question_input(year: &str, cookie_path: &str, input_cache: &str, day: Day) -> String {
     AdventOfCode::init(
         year,
         &fs::read_to_string(cookie_path).expect("Failed to read session id"),
-        Path::new("inputs"),
+        Path::new(input_cache),
     )
     .expect("Failed to initialize client")
     .load_question_input(day)
