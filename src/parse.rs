@@ -244,6 +244,27 @@ mod parsers_internal {
         }
     }
 
+    // TagReplace
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    pub struct TagReplace<'a, T>(&'a str, T);
+
+    impl<'a, T> TagReplace<'a, T> {
+        pub fn new(s: &'a str, t: T) -> Self {
+            TagReplace(s, t)
+        }
+    }
+
+    impl<'b, T> Parser for TagReplace<'b, T> {
+        type Output = T;
+
+        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
+            match s.strip_prefix(self.0) {
+                None => ParseState::error_unmatched_tag(self.0, s),
+                Some(s) => ParseState::ok(self.1, s),
+            }
+        }
+    }
+
     // Tag
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     pub struct Tag<'a>(&'a str);
@@ -685,7 +706,7 @@ mod parsers_internal {
 
         fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
             parsers::char('-')
-                .ignore(parsers::number_with_seps(self.0))
+                .ignore_and_then(parsers::number_with_seps(self.0))
                 .map(|n| -(n as i32))
                 .or(parsers::number_with_seps(self.0).map(|n| n as i32))
                 .parse(s)
@@ -776,20 +797,20 @@ mod parsers_internal {
         }
     }
 
-    // Ingore
+    // IngoreAndThen
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-    pub struct Ignore<P, Q> {
+    pub struct IgnoreAndThen<P, Q> {
         p: P,
         q: Q,
     }
 
-    impl<P, Q> Ignore<P, Q> {
+    impl<P, Q> IgnoreAndThen<P, Q> {
         pub fn new(p: P, q: Q) -> Self {
-            Ignore { p, q }
+            IgnoreAndThen { p, q }
         }
     }
 
-    impl<T, P, Q> Parser for Ignore<P, Q>
+    impl<T, P, Q> Parser for IgnoreAndThen<P, Q>
     where
         P: Parser,
         Q: Parser<Output = T>,
@@ -887,6 +908,11 @@ pub mod parsers {
     }
 
     #[inline]
+    pub fn tag_replace<'a, T>(s: &'a str, t: T) -> parsers_internal::TagReplace<'a, T> {
+        parsers_internal::TagReplace::new(s, t)
+    }
+
+    #[inline]
     pub fn tag<'a>(s: &'a str) -> parsers_internal::Tag<'a> {
         parsers_internal::Tag::new(s)
     }
@@ -948,8 +974,8 @@ pub trait Parser: Sized {
     }
 
     #[inline]
-    fn ignore<Q>(self, other: Q) -> parsers_internal::Ignore<Self, Q> {
-        parsers_internal::Ignore::new(self, other)
+    fn ignore_and_then<Q>(self, other: Q) -> parsers_internal::IgnoreAndThen<Self, Q> {
+        parsers_internal::IgnoreAndThen::new(self, other)
     }
 
     #[inline]
