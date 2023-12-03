@@ -1,4 +1,4 @@
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::{hash_map, HashMap};
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::ops::{Add, Div, Index, IndexMut, Mul, Neg, Rem, Sub};
@@ -715,7 +715,7 @@ impl<T: PartialEq> Lattice<T> {
 /// Used for modifying lattice entries
 ////////////
 
-pub struct LatticeEntry<'a, T: 'a>(Entry<'a, GridPoint<isize>, T>);
+pub struct LatticeEntry<'a, T: 'a>(hash_map::Entry<'a, GridPoint<isize>, T>);
 
 impl<'a, T> LatticeEntry<'a, T> {
     pub fn or_insert(self, default: T) -> &'a mut T {
@@ -745,6 +745,63 @@ impl<'a, T> LatticeEntry<'a, T> {
 impl<'a, T: Default> LatticeEntry<'a, T> {
     pub fn or_default(self) -> &'a mut T {
         self.0.or_default()
+    }
+}
+
+////////////
+/// LatticeIterator + LatticeIteratorMut + IntoLatticeIterator
+///
+/// iterates through all non-empty lattice points
+////////////
+
+pub struct LatticeIterator<'a, T>(hash_map::Iter<'a, GridPoint<isize>, T>);
+
+impl<'a, T> Iterator for LatticeIterator<'a, T> {
+    type Item = (&'a GridPoint<isize>, &'a T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+}
+
+pub struct LatticeIteratorMut<'a, T>(hash_map::IterMut<'a, GridPoint<isize>, T>);
+
+impl<'a, T> Iterator for LatticeIteratorMut<'a, T> {
+    type Item = (&'a GridPoint<isize>, &'a mut T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+}
+
+pub struct IntoLatticeIterator<T>(hash_map::IntoIter<GridPoint<isize>, T>);
+
+impl<T> Iterator for IntoLatticeIterator<T> {
+    type Item = (GridPoint<isize>, T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+}
+
+impl<T> IntoIterator for Lattice<T> {
+    type IntoIter = IntoLatticeIterator<T>;
+    type Item = (GridPoint<isize>, T);
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoLatticeIterator(self.points.into_iter())
     }
 }
 
