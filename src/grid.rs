@@ -560,6 +560,10 @@ impl<T> Grid<T> {
         self.rows
     }
 
+    pub fn dimensions(&self) -> GridDimensions<usize> {
+        GridDimensions::new(0, self.rows, 0, self.cols)
+    }
+
     pub fn get(&self, point: GridPoint<usize>) -> IndexResult<&T, usize> {
         if point.row > self.rows || point.col > self.cols {
             return IndexOutOfBoundsError::err(self.rows, self.cols, point);
@@ -757,6 +761,18 @@ impl<T> Block<T> {
         T: Ord,
     {
         self.0.iter().map(|p| p.col()).max()
+    }
+
+    pub fn dimensions(&self) -> Option<GridDimensions<&T>>
+    where
+        T: Ord,
+    {
+        Some(GridDimensions {
+            min_row: self.min_row()?,
+            max_row: self.max_row()?,
+            min_col: self.min_col()?,
+            max_col: self.max_col()?,
+        })
     }
 }
 
