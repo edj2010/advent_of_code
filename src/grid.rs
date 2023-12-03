@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::ops::{Add, Div, Index, IndexMut, Mul, Neg, Rem, Sub};
@@ -667,6 +667,10 @@ impl<T> Lattice<T> {
         self.points.insert(point, value)
     }
 
+    pub fn entry(&mut self, point: GridPoint<isize>) -> LatticeEntry<'_, T> {
+        LatticeEntry(self.points.entry(point))
+    }
+
     pub fn intersects_block(&self, block: &Block<isize>) -> bool {
         block.0.iter().any(|p| self.contains(*p))
     }
@@ -702,6 +706,45 @@ impl<T: PartialEq> Lattice<T> {
             .find(|(_, v)| &val == v)
             .map(|(idx, _)| idx)
             .copied()
+    }
+}
+
+////////////
+/// LatticeEntry
+///
+/// Used for modifying lattice entries
+////////////
+
+pub struct LatticeEntry<'a, T: 'a>(Entry<'a, GridPoint<isize>, T>);
+
+impl<'a, T> LatticeEntry<'a, T> {
+    pub fn or_insert(self, default: T) -> &'a mut T {
+        self.0.or_insert(default)
+    }
+
+    pub fn or_insert_with<F: FnOnce() -> T>(self, default: F) -> &'a mut T {
+        self.0.or_insert_with(default)
+    }
+
+    pub fn or_insert_with_key<F: FnOnce(&GridPoint<isize>) -> T>(self, default: F) -> &'a mut T {
+        self.0.or_insert_with_key(default)
+    }
+
+    pub fn key(&self) -> &GridPoint<isize> {
+        self.0.key()
+    }
+
+    pub fn and_modify<F>(self, f: F) -> Self
+    where
+        F: FnOnce(&mut T),
+    {
+        LatticeEntry(self.0.and_modify(f))
+    }
+}
+
+impl<'a, T: Default> LatticeEntry<'a, T> {
+    pub fn or_default(self) -> &'a mut T {
+        self.0.or_default()
     }
 }
 
