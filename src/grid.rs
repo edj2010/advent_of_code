@@ -1,8 +1,63 @@
-use std::cmp::{max, min};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::ops::{Add, Div, Index, IndexMut, Mul, Neg, Rem, Sub};
+
+/////////////
+/// Grid Dimension
+///
+/// datastructure for identifying Grid Dimentions
+/////////////
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct GridDimensions<T> {
+    pub min_row: T,
+    pub max_row: T,
+    pub min_col: T,
+    pub max_col: T,
+}
+
+impl<T> GridDimensions<T> {
+    pub fn new(min_row: T, max_row: T, min_col: T, max_col: T) -> Self {
+        GridDimensions {
+            min_row,
+            max_row,
+            min_col,
+            max_col,
+        }
+    }
+
+    pub fn contains(&self, point: &GridPoint<T>) -> bool
+    where
+        T: PartialOrd,
+    {
+        self.min_row <= point.row
+            && point.row < self.max_row
+            && self.min_col <= point.col
+            && point.col < self.max_col
+    }
+}
+
+impl GridDimensions<isize> {
+    pub fn of_points_inclusive(a: GridPoint<isize>, b: GridPoint<isize>) -> Self {
+        GridDimensions {
+            min_row: a.row.min(b.row),
+            max_row: a.row.max(b.row) + 1,
+            min_col: a.col.min(b.col),
+            max_col: a.col.max(b.col) + 1,
+        }
+    }
+}
+
+impl GridDimensions<usize> {
+    pub fn of_points_inclusive(a: GridPoint<usize>, b: GridPoint<usize>) -> Self {
+        GridDimensions {
+            min_row: a.row.min(b.row),
+            max_row: a.row.max(b.row) + 1,
+            min_col: a.col.min(b.col),
+            max_col: a.col.max(b.col) + 1,
+        }
+    }
+}
 
 /////////////
 /// Grid Point
@@ -79,24 +134,15 @@ impl<T> GridPoint<T> {
     pub fn add_checked<S>(
         self,
         rhs: GridPointDelta<S>,
-        min_row: &T,
-        max_row: &T,
-        min_col: &T,
-        max_col: &T,
+        grid_dimensions: &GridDimensions<T>,
     ) -> Option<Self>
     where
         S: TryInto<T> + Add<S, Output = S> + TryFrom<T>,
         T: PartialOrd,
     {
-        let row: T = (S::try_from(self.row).ok()? + rhs.row_delta)
-            .try_into()
-            .ok()?;
-        let col: T = (S::try_from(self.col).ok()? + rhs.col_delta)
-            .try_into()
-            .ok()?;
-
-        if min_row <= &row && &row < max_row && min_col <= &col && &col < max_col {
-            Some(GridPoint::new(row, col))
+        let result = self.add(rhs)?;
+        if grid_dimensions.contains(&result) {
+            Some(result)
         } else {
             None
         }
@@ -360,10 +406,7 @@ pub const ADJACENT: [GridPointDelta<isize>; 8] = [
 pub struct GridPointIterator<T, S> {
     next: Option<GridPoint<T>>,
     traverse_by: GridPointDelta<S>,
-    min_row: T,
-    max_row: T,
-    min_col: T,
-    max_col: T,
+    grid_dimensions: GridDimensions<T>,
 }
 
 impl<T, S> Iterator for GridPointIterator<T, S>
@@ -375,13 +418,9 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(next) = self.next.clone() {
-            self.next = next.clone().add_checked(
-                self.traverse_by.clone(),
-                &self.min_row,
-                &self.max_row,
-                &self.min_col,
-                &self.max_col,
-            );
+            self.next = next
+                .clone()
+                .add_checked(self.traverse_by.clone(), &self.grid_dimensions);
             Some(next)
         } else {
             None
@@ -393,18 +432,12 @@ impl<T> GridPoint<T> {
     pub fn traverse_by<S>(
         self,
         traverse_by: GridPointDelta<S>,
-        min_row: T,
-        max_row: T,
-        min_col: T,
-        max_col: T,
+        grid_dimensions: GridDimensions<T>,
     ) -> GridPointIterator<T, S> {
         GridPointIterator {
             next: Some(self),
             traverse_by,
-            min_row,
-            max_row,
-            min_col,
-            max_col,
+            grid_dimensions,
         }
     }
 }
@@ -414,10 +447,7 @@ impl GridPoint<usize> {
         Some(GridPointIterator {
             next: Some(self),
             traverse_by: other.sub(self)?.min_step(),
-            min_row: min(self.row, other.row),
-            max_row: max(self.row, other.row) + 1,
-            min_col: min(self.col, other.col),
-            max_col: max(self.col, other.col) + 1,
+            grid_dimensions: GridDimensions::<usize>::of_points_inclusive(self, other),
         })
     }
 }
@@ -427,10 +457,7 @@ impl GridPoint<isize> {
         Some(GridPointIterator {
             next: Some(self),
             traverse_by: other.sub(self)?.min_step(),
-            min_row: min(self.row, other.row),
-            max_row: max(self.row, other.row) + 1,
-            min_col: min(self.col, other.col),
-            max_col: max(self.col, other.col) + 1,
+            grid_dimensions: GridDimensions::<isize>::of_points_inclusive(self, other),
         })
     }
 }
@@ -781,7 +808,7 @@ mod tests {
 
         assert_eq!(
             grid_point
-                .traverse_by(step_by, 0, 5, 0, 5)
+                .traverse_by(step_by, GridDimensions::new(0, 5, 0, 5))
                 .collect::<Vec<GridPoint<usize>>>(),
             vec![
                 GridPoint { row: 1, col: 1 },

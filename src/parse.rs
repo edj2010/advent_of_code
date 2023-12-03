@@ -1428,21 +1428,21 @@ bjgGqQGbQnjGQgnQgbGgjJnDLHLdfPVtdDmLZdBFVVZttdTf
     fn ignore() {
         assert_eq!(
             parsers::number()
-                .ignore(parsers::any())
+                .ignore_and_then(parsers::any())
                 .parse("123abc")
                 .finish(),
             Ok("abc".to_owned())
         );
         assert_eq!(
             parsers::char('b')
-                .ignore(parsers::number())
+                .ignore_and_then(parsers::number())
                 .parse("a123abc")
                 .finish(),
             Err((ParseError::UnexpectedChar('a'), "a123abc"))
         );
         assert_eq!(
             parsers::number()
-                .ignore(parsers::number())
+                .ignore_and_then(parsers::number())
                 .parse("123abc")
                 .finish(),
             Err((ParseError::ParseIntError("".to_string()), "abc"))
