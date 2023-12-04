@@ -683,6 +683,33 @@ impl<T> Lattice<T> {
             self.set(p, value.clone());
         })
     }
+
+    pub fn apply_block_with_default<F: Fn(&mut T, GridPoint<isize>)>(
+        &mut self,
+        block: Block<isize>,
+        f: F,
+    ) where
+        T: Clone + Default,
+    {
+        block
+            .0
+            .into_iter()
+            .for_each(|p| f(self.entry(p).or_default(), p))
+    }
+
+    pub fn apply_block<F: Fn(&mut T, GridPoint<isize>)>(
+        &mut self,
+        block: Block<isize>,
+        f: F,
+        default: T,
+    ) where
+        T: Clone + Default,
+    {
+        block
+            .0
+            .into_iter()
+            .for_each(|p| f(self.entry(p).or_insert(default.clone()), p))
+    }
 }
 
 impl<T> Index<GridPoint<isize>> for Lattice<T> {
