@@ -1,6 +1,7 @@
 use std::collections::{hash_map, HashMap};
 use std::error::Error;
 use std::fmt::{Debug, Display};
+use std::iter::Step;
 use std::ops::{Add, Div, Index, IndexMut, Mul, Neg, Rem, Sub};
 
 /////////////
@@ -37,25 +38,55 @@ impl<T> GridDimensions<T> {
     }
 }
 
-impl GridDimensions<isize> {
-    pub fn of_points_inclusive(a: GridPoint<isize>, b: GridPoint<isize>) -> Self {
+impl<T> GridDimensions<T>
+where
+    T: Step + Ord + Clone,
+{
+    pub fn of_points_inclusive(a: GridPoint<T>, b: GridPoint<T>) -> Self {
         GridDimensions {
-            min_row: a.row.min(b.row),
-            max_row: a.row.max(b.row) + 1,
-            min_col: a.col.min(b.col),
-            max_col: a.col.max(b.col) + 1,
+            min_row: a.row.clone().min(b.row.clone()),
+            max_row: Step::forward(a.row.max(b.row), 1),
+            min_col: a.col.clone().min(b.col.clone()),
+            max_col: Step::forward(a.col.max(b.col), 1),
+        }
+    }
+
+    pub fn all_contained_points<'a>(&'a self) -> GridDimensionIterator<'a, T> {
+        GridDimensionIterator {
+            current_row: self.min_row.clone(),
+            current_col: self.min_col.clone(),
+            dimension: &self,
         }
     }
 }
 
-impl GridDimensions<usize> {
-    pub fn of_points_inclusive(a: GridPoint<usize>, b: GridPoint<usize>) -> Self {
-        GridDimensions {
-            min_row: a.row.min(b.row),
-            max_row: a.row.max(b.row) + 1,
-            min_col: a.col.min(b.col),
-            max_col: a.col.max(b.col) + 1,
+/////////////
+/// Grid Dimension Iterator
+///
+/// iterator over all gridpoints within a specified dimension
+/////////////
+
+pub struct GridDimensionIterator<'a, T> {
+    current_row: T,
+    current_col: T,
+    dimension: &'a GridDimensions<T>,
+}
+
+impl<'a, T: Step + Ord + Clone> Iterator for GridDimensionIterator<'a, T> {
+    type Item = GridPoint<T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current_row >= self.dimension.max_row {
+            return None;
         }
+        let ret = GridPoint::new(self.current_row.clone(), self.current_col.clone());
+
+        self.current_col = Step::forward(self.current_col.clone(), 1);
+        if self.current_col >= self.dimension.max_col {
+            self.current_col = self.dimension.min_col.clone();
+            self.current_row = Step::forward(self.current_row.clone(), 1);
+        }
+        Some(ret)
     }
 }
 

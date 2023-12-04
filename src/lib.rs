@@ -3,6 +3,7 @@
 #![feature(never_type)]
 #![feature(associated_type_bounds)]
 #![feature(return_position_impl_trait_in_trait)]
+#![feature(step_trait)]
 #![allow(incomplete_features)]
 
 pub mod day;
