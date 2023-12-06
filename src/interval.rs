@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering, ops::Add};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum IntervalBound<T> {
@@ -42,6 +42,20 @@ where
 
     pub fn compare_internal(&self, other: &Self) -> Option<Ordering> {
         self.inner().partial_cmp(other.inner())
+    }
+}
+
+impl<T> Add<T> for IntervalBound<T>
+where
+    T: Add<T, Output = T>,
+{
+    type Output = IntervalBound<T>;
+
+    fn add(self, rhs: T) -> Self::Output {
+        match self {
+            Self::Inclusive(t) => Self::Inclusive(t + rhs),
+            Self::Exclusive(t) => Self::Exclusive(t + rhs),
+        }
     }
 }
 
@@ -107,5 +121,19 @@ where
         T: Clone,
     {
         self.intersection(other).is_some()
+    }
+}
+
+impl<T> Add<T> for Interval<T>
+where
+    T: Add<T, Output = T> + Clone
+{
+    type Output = Interval<T>;
+
+    fn add(self, rhs: T) -> Self::Output {
+        Interval {
+            begin: self.begin + rhs.clone(),
+            end: self.end + rhs,
+        }
     }
 }
