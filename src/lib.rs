@@ -9,6 +9,7 @@
 pub mod day;
 pub mod grid;
 pub mod hash;
+pub mod interval;
 pub mod parse;
 pub mod search;
 pub mod vector;
