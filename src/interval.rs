@@ -13,6 +13,13 @@ impl<T> IntervalBound<T> {
             _ => false,
         }
     }
+
+    fn inner(&self) -> &T {
+        match self {
+            Self::Inclusive(t) => t,
+            Self::Exclusive(t) => t,
+        }
+    }
 }
 
 impl<T> IntervalBound<T>
@@ -34,12 +41,7 @@ where
     }
 
     pub fn compare_internal(&self, other: &Self) -> Option<Ordering> {
-        match (self, other) {
-            (Self::Inclusive(a), Self::Inclusive(b)) => a.partial_cmp(b),
-            (Self::Inclusive(a), Self::Exclusive(b)) => a.partial_cmp(b),
-            (Self::Exclusive(a), Self::Inclusive(b)) => a.partial_cmp(b),
-            (Self::Exclusive(a), Self::Exclusive(b)) => a.partial_cmp(b),
-        }
+        self.inner().partial_cmp(other.inner())
     }
 }
 
@@ -47,6 +49,16 @@ where
 pub struct Interval<T> {
     begin: IntervalBound<T>,
     end: IntervalBound<T>,
+}
+
+impl<T> Interval<T> {
+    pub fn begin(&self) -> &T {
+        self.begin.inner()
+    }
+
+    pub fn end(&self) -> &T {
+        self.end.inner()
+    }
 }
 
 impl<T> Interval<T>
