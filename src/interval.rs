@@ -210,10 +210,13 @@ where
         }
     }
 
-    pub fn from<I: IntoIterator<Item = Interval<T>>>(i: I) -> Self {
-        DisjointIntervalUnion {
-            intervals: i.into_iter().collect(),
-        }
+    pub fn from<I: IntoIterator<Item = Interval<T>>>(i: I) -> Self
+    where
+        T: Clone,
+    {
+        let mut to_return = Self::empty();
+        i.into_iter().for_each(|interval| to_return |= interval);
+        to_return
     }
 
     pub fn lower_bound(&self) -> Option<&T> {
@@ -224,6 +227,14 @@ where
 
     pub fn upper_bound(&self) -> Option<&T> {
         self.intervals.last().map(|interval| interval.upper_bound())
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Interval<T>> {
+        self.intervals.iter()
+    }
+
+    pub fn into_iter(self) -> impl Iterator<Item = Interval<T>> {
+        self.intervals.into_iter()
     }
 }
 
