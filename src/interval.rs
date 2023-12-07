@@ -101,11 +101,11 @@ impl<T> Interval<T> {
         Interval { begin, end }
     }
 
-    pub fn begin(&self) -> &T {
+    pub fn lower_bound(&self) -> &T {
         self.begin.inner()
     }
 
-    pub fn end(&self) -> &T {
+    pub fn upper_bound(&self) -> &T {
         self.end.inner()
     }
 }
@@ -214,6 +214,16 @@ where
         DisjointIntervalUnion {
             intervals: i.into_iter().collect(),
         }
+    }
+
+    pub fn lower_bound(&self) -> Option<&T> {
+        self.intervals
+            .first()
+            .map(|interval| interval.lower_bound())
+    }
+
+    pub fn upper_bound(&self) -> Option<&T> {
+        self.intervals.last().map(|interval| interval.upper_bound())
     }
 }
 
