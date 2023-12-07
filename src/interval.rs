@@ -1,4 +1,9 @@
-use std::{cmp::Ordering, ops::Add};
+use std::{
+    cmp::Ordering,
+    collections::BTreeSet,
+    mem::take,
+    ops::{Add, BitAnd, BitAndAssign, BitOr, BitOrAssign},
+};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum IntervalBound<T> {
@@ -42,6 +47,32 @@ where
 
     pub fn compare_internal(&self, other: &Self) -> Option<Ordering> {
         self.inner().partial_cmp(other.inner())
+    }
+
+    pub fn compare_as_lower_bound(&self, other: &Self) -> Option<Ordering> {
+        match self.compare_internal(&other)? {
+            Ordering::Equal => match (&self, &other) {
+                (IntervalBound::Inclusive(_), IntervalBound::Exclusive(_)) => Some(Ordering::Less),
+                (IntervalBound::Exclusive(_), IntervalBound::Inclusive(_)) => {
+                    Some(Ordering::Greater)
+                }
+                _ => Some(Ordering::Equal),
+            },
+            o => Some(o),
+        }
+    }
+
+    pub fn compare_as_upper_bound(&self, other: &Self) -> Option<Ordering> {
+        match self.compare_internal(&other)? {
+            Ordering::Equal => match (&self, &other) {
+                (IntervalBound::Inclusive(_), IntervalBound::Exclusive(_)) => {
+                    Some(Ordering::Greater)
+                }
+                (IntervalBound::Exclusive(_), IntervalBound::Inclusive(_)) => Some(Ordering::Less),
+                _ => Some(Ordering::Equal),
+            },
+            o => Some(o),
+        }
     }
 }
 
@@ -91,21 +122,13 @@ where
     where
         T: Clone,
     {
-        let begin = match self.begin.compare_internal(&other.begin)? {
+        let begin = match self.begin.compare_as_lower_bound(&other.begin)? {
             Ordering::Less => other.begin.clone(),
-            Ordering::Greater => self.begin.clone(),
-            Ordering::Equal => match (&self.begin, &other.begin) {
-                (IntervalBound::Exclusive(_), _) => self.begin.clone(),
-                _ => other.begin.clone(),
-            },
+            _ => self.begin.clone(),
         };
         let end = match self.end.compare_internal(&other.end)? {
-            Ordering::Less => self.end.clone(),
             Ordering::Greater => other.end.clone(),
-            Ordering::Equal => match (&self.end, &other.end) {
-                (IntervalBound::Exclusive(_), _) => self.end.clone(),
-                _ => other.end.clone(),
-            },
+            _ => self.end.clone(),
         };
         match begin.compare_internal(&end)? {
             Ordering::Less => Some(Interval { begin, end }),
@@ -139,5 +162,178 @@ where
             begin: self.begin + rhs.clone(),
             end: self.end + rhs,
         }
+    }
+}
+
+impl<T> PartialOrd for Interval<T>
+where
+    T: PartialOrd,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match self.begin.compare_as_lower_bound(&other.begin) {
+            Some(Ordering::Equal) => self.end.compare_as_upper_bound(&other.end),
+            o => o,
+        }
+    }
+}
+
+impl<T> Ord for Interval<T>
+where
+    T: Ord,
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DisjointIntervalUnion<T>
+where
+    T: Ord,
+{
+    intervals: BTreeSet<Interval<T>>,
+}
+
+impl<T> DisjointIntervalUnion<T>
+where
+    T: Ord,
+{
+    pub fn empty() -> Self {
+        Self {
+            intervals: BTreeSet::new(),
+        }
+    }
+
+    pub fn singleton(interval: Interval<T>) -> Self {
+        DisjointIntervalUnion {
+            intervals: BTreeSet::from([interval]),
+        }
+    }
+
+    pub fn from<I: IntoIterator<Item = Interval<T>>>(i: I) -> Self {
+        DisjointIntervalUnion {
+            intervals: i.into_iter().collect(),
+        }
+    }
+}
+
+impl<T> DisjointIntervalUnion<T>
+where
+    T: Ord + Clone,
+{
+    pub fn union_interval_assign(&mut self, interval: Interval<T>) {
+        let begin = self
+            .intervals
+            .iter()
+            .filter(|i| i.intersects(&interval))
+            .map(|i| &i.begin)
+            .fold(interval.begin.clone(), |bound, new_bound| {
+                if new_bound.compare_as_lower_bound(&bound) == Some(Ordering::Less) {
+                    new_bound.clone()
+                } else {
+                    bound
+                }
+            });
+        let end = self
+            .intervals
+            .iter()
+            .filter(|i| i.intersects(&interval))
+            .map(|i| &i.end)
+            .fold(interval.end.clone(), |bound, new_bound| {
+                if new_bound.compare_as_upper_bound(&bound) == Some(Ordering::Greater) {
+                    new_bound.clone()
+                } else {
+                    bound
+                }
+            });
+        self.intervals.retain(|i| !i.intersects(&interval));
+        self.intervals.insert(Interval::new(begin, end));
+    }
+
+    pub fn union_interval(&self, interval: Interval<T>) -> Self {
+        let mut to_return = self.clone();
+        to_return.union_interval_assign(interval);
+        to_return
+    }
+
+    pub fn intersect_interval_assign(&mut self, interval: Interval<T>) {
+        self.intervals = take(&mut self.intervals)
+            .into_iter()
+            .filter_map(|i| i.intersection(&interval))
+            .collect()
+    }
+
+    pub fn intersect_interval(&self, interval: Interval<T>) -> Self {
+        let mut to_return = self.clone();
+        to_return.intersect_interval_assign(interval);
+        to_return
+    }
+}
+
+impl<T: Ord + Clone> BitOr<Interval<T>> for DisjointIntervalUnion<T> {
+    type Output = DisjointIntervalUnion<T>;
+
+    fn bitor(self, rhs: Interval<T>) -> Self::Output {
+        self.union_interval(rhs)
+    }
+}
+
+impl<T: Ord + Clone> BitOrAssign<Interval<T>> for DisjointIntervalUnion<T> {
+    fn bitor_assign(&mut self, rhs: Interval<T>) {
+        self.union_interval_assign(rhs);
+    }
+}
+
+impl<T: Ord + Clone> BitAnd<Interval<T>> for DisjointIntervalUnion<T> {
+    type Output = DisjointIntervalUnion<T>;
+
+    fn bitand(self, rhs: Interval<T>) -> Self::Output {
+        self.intersect_interval(rhs)
+    }
+}
+
+impl<T: Ord + Clone> BitAndAssign<Interval<T>> for DisjointIntervalUnion<T> {
+    fn bitand_assign(&mut self, rhs: Interval<T>) {
+        self.intersect_interval_assign(rhs)
+    }
+}
+
+impl<T: Ord + Clone> BitOr<DisjointIntervalUnion<T>> for DisjointIntervalUnion<T> {
+    type Output = DisjointIntervalUnion<T>;
+
+    fn bitor(self, rhs: DisjointIntervalUnion<T>) -> Self::Output {
+        rhs.intervals
+            .into_iter()
+            .fold(self, |interval_union, interval| {
+                interval_union.union_interval(interval)
+            })
+    }
+}
+
+impl<T: Ord + Clone> BitOrAssign<DisjointIntervalUnion<T>> for DisjointIntervalUnion<T> {
+    fn bitor_assign(&mut self, rhs: DisjointIntervalUnion<T>) {
+        rhs.intervals
+            .into_iter()
+            .for_each(|interval| self.union_interval_assign(interval))
+    }
+}
+
+impl<T: Ord + Clone> BitAnd<DisjointIntervalUnion<T>> for DisjointIntervalUnion<T> {
+    type Output = DisjointIntervalUnion<T>;
+
+    fn bitand(self, rhs: DisjointIntervalUnion<T>) -> Self::Output {
+        rhs.intervals
+            .into_iter()
+            .fold(self, |interval_union, interval| {
+                interval_union.intersect_interval(interval)
+            })
+    }
+}
+
+impl<T: Ord + Clone> BitAndAssign<DisjointIntervalUnion<T>> for DisjointIntervalUnion<T> {
+    fn bitand_assign(&mut self, rhs: DisjointIntervalUnion<T>) {
+        rhs.intervals
+            .into_iter()
+            .for_each(|interval| self.intersect_interval_assign(interval))
     }
 }
