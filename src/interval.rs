@@ -66,6 +66,10 @@ pub struct Interval<T> {
 }
 
 impl<T> Interval<T> {
+    pub fn new(begin: IntervalBound<T>, end: IntervalBound<T>) -> Self {
+        Interval { begin, end }
+    }
+
     pub fn begin(&self) -> &T {
         self.begin.inner()
     }
@@ -126,7 +130,7 @@ where
 
 impl<T> Add<T> for Interval<T>
 where
-    T: Add<T, Output = T> + Clone
+    T: Add<T, Output = T> + Clone,
 {
     type Output = Interval<T>;
 
