@@ -11,6 +11,7 @@ pub mod grid;
 pub mod hash;
 pub mod interval;
 pub mod itertools;
+pub mod number_theory;
 pub mod parse;
 pub mod search;
 pub mod vector;
