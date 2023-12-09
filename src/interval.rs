@@ -289,6 +289,12 @@ impl<T: Ord + Clone> FromIterator<Interval<T>> for DisjointIntervalUnion<T> {
     }
 }
 
+impl<T: Ord + Clone> FromIterator<DisjointIntervalUnion<T>> for DisjointIntervalUnion<T> {
+    fn from_iter<I: IntoIterator<Item = DisjointIntervalUnion<T>>>(iter: I) -> Self {
+        Self::from(iter.into_iter().flat_map(|i| i.into_iter()))
+    }
+}
+
 impl<T> DisjointIntervalUnion<T>
 where
     T: Ord + Clone,
