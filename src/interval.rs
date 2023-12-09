@@ -2,7 +2,7 @@ use std::{
     cmp::Ordering,
     collections::BTreeSet,
     mem::take,
-    ops::{Add, BitAnd, BitAndAssign, BitOr, BitOrAssign},
+    ops::{Add, BitAnd, BitAndAssign, BitOr, BitOrAssign, Sub, SubAssign},
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -23,6 +23,13 @@ impl<T> IntervalBound<T> {
         match self {
             Self::Inclusive(t) => t,
             Self::Exclusive(t) => t,
+        }
+    }
+
+    fn invert(self) -> Self {
+        match self {
+            Self::Inclusive(t) => Self::Exclusive(t),
+            Self::Exclusive(t) => Self::Inclusive(t),
         }
     }
 }
@@ -118,6 +125,14 @@ where
         self.begin.bounds_below(t) && self.end.bounds_above(t)
     }
 
+    pub fn non_empty(&self) -> bool {
+        match self.begin.compare_internal(&self.end) {
+            Some(Ordering::Less) => true,
+            Some(Ordering::Equal) => self.begin.inclusive() && self.end.inclusive(),
+            _ => false,
+        }
+    }
+
     pub fn intersection(&self, other: &Self) -> Option<Self>
     where
         T: Clone,
@@ -148,6 +163,30 @@ where
         T: Clone,
     {
         self.intersection(other).is_some()
+    }
+
+    pub fn difference(&self, other: &Self) -> DisjointIntervalUnion<T>
+    where
+        T: Clone + Ord,
+    {
+        if !self.intersects(other) {
+            return DisjointIntervalUnion::singleton(self.clone());
+        }
+
+        DisjointIntervalUnion::from(
+            [
+                Interval {
+                    begin: self.begin.clone(),
+                    end: other.begin.clone().invert(),
+                },
+                Interval {
+                    begin: other.begin.clone().invert(),
+                    end: self.end.clone(),
+                },
+            ]
+            .into_iter()
+            .filter(|i| i.non_empty()),
+        )
     }
 }
 
@@ -238,6 +277,12 @@ where
     }
 }
 
+impl<T: Ord> Default for DisjointIntervalUnion<T> {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
 impl<T: Ord + Clone> FromIterator<Interval<T>> for DisjointIntervalUnion<T> {
     fn from_iter<I: IntoIterator<Item = Interval<T>>>(iter: I) -> Self {
         Self::from(iter)
@@ -295,6 +340,19 @@ where
         to_return.intersect_interval_assign(interval);
         to_return
     }
+
+    pub fn subtract_interval_assign(&mut self, interval: Interval<T>) {
+        self.intervals = take(&mut self.intervals)
+            .into_iter()
+            .flat_map(|i| i.difference(&interval).intervals.into_iter())
+            .collect()
+    }
+
+    pub fn subtract_interval(&self, interval: Interval<T>) -> Self {
+        let mut to_return = self.clone();
+        to_return.subtract_interval_assign(interval);
+        to_return
+    }
 }
 
 impl<T: Ord + Clone> BitOr<Interval<T>> for DisjointIntervalUnion<T> {
@@ -325,6 +383,20 @@ impl<T: Ord + Clone> BitAndAssign<Interval<T>> for DisjointIntervalUnion<T> {
     }
 }
 
+impl<T: Ord + Clone> Sub<Interval<T>> for DisjointIntervalUnion<T> {
+    type Output = DisjointIntervalUnion<T>;
+
+    fn sub(self, rhs: Interval<T>) -> Self::Output {
+        self.subtract_interval(rhs)
+    }
+}
+
+impl<T: Ord + Clone> SubAssign<Interval<T>> for DisjointIntervalUnion<T> {
+    fn sub_assign(&mut self, rhs: Interval<T>) {
+        self.subtract_interval_assign(rhs)
+    }
+}
+
 impl<T: Ord + Clone> BitOr<DisjointIntervalUnion<T>> for DisjointIntervalUnion<T> {
     type Output = DisjointIntervalUnion<T>;
 
@@ -349,18 +421,35 @@ impl<T: Ord + Clone> BitAnd<DisjointIntervalUnion<T>> for DisjointIntervalUnion<
     type Output = DisjointIntervalUnion<T>;
 
     fn bitand(self, rhs: DisjointIntervalUnion<T>) -> Self::Output {
-        rhs.intervals
-            .into_iter()
-            .fold(self, |interval_union, interval| {
-                interval_union.intersect_interval(interval)
-            })
+        rhs.intervals.into_iter().fold(
+            DisjointIntervalUnion::empty(),
+            |interval_union, interval| interval_union | (self.intersect_interval(interval)),
+        )
     }
 }
 
 impl<T: Ord + Clone> BitAndAssign<DisjointIntervalUnion<T>> for DisjointIntervalUnion<T> {
     fn bitand_assign(&mut self, rhs: DisjointIntervalUnion<T>) {
+        *self = take(self) & rhs
+    }
+}
+
+impl<T: Ord + Clone> Sub<DisjointIntervalUnion<T>> for DisjointIntervalUnion<T> {
+    type Output = DisjointIntervalUnion<T>;
+
+    fn sub(self, rhs: DisjointIntervalUnion<T>) -> Self::Output {
         rhs.intervals
             .into_iter()
-            .for_each(|interval| self.intersect_interval_assign(interval))
+            .fold(self, |interval_union, interval| {
+                interval_union.subtract_interval(interval)
+            })
+    }
+}
+
+impl<T: Ord + Clone> SubAssign<DisjointIntervalUnion<T>> for DisjointIntervalUnion<T> {
+    fn sub_assign(&mut self, rhs: DisjointIntervalUnion<T>) {
+        rhs.intervals
+            .into_iter()
+            .for_each(|interval| self.subtract_interval_assign(interval))
     }
 }
