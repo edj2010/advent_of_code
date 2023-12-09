@@ -16,6 +16,20 @@ pub trait Itertools: Iterator + Sized {
     {
         self.find(|i| i == item).is_some()
     }
+
+    fn cycle_len(self) -> Option<usize>
+    where
+        Self::Item: Eq + Hash,
+    {
+        let mut seen: HashMap<Self::Item, usize> = HashMap::new();
+        for (idx, el) in self.enumerate() {
+            if let Some(first_idx) = seen.get(&el) {
+                return Some(idx - first_idx);
+            }
+            seen.insert(el, idx);
+        }
+        None
+    }
 }
 
 impl<T> Itertools for T where T: Iterator {}
