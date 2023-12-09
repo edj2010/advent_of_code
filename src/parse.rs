@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ParseError {
     ParseIntError(String),
@@ -134,7 +136,7 @@ impl<'a, T> ParseState<'a, T> {
 ///////
 
 mod parsers_internal {
-    use std::collections::VecDeque;
+    use std::{collections::VecDeque, marker::PhantomData, ops::Neg, str::FromStr};
 
     use super::{parsers, ParseError, ParseState, Parser};
 
@@ -669,23 +671,26 @@ mod parsers_internal {
 
     // Number
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-    pub struct Number<'a>(&'a str);
+    pub struct Number<'a, T>(&'a str, PhantomData<T>);
 
-    impl<'a> Number<'a> {
+    impl<'a, T> Number<'a, T> {
         pub fn new(seps: &'a str) -> Self {
-            Number(seps)
+            Number(seps, PhantomData)
         }
     }
 
-    impl<'b> Parser for Number<'b> {
-        type Output = u32;
+    impl<'b, T> Parser for Number<'b, T>
+    where
+        T: FromStr,
+    {
+        type Output = T;
 
         fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
             parsers::chars(|c: char| c.is_numeric() || self.0.contains(c))
                 .many()
                 .bind(|v: ManyIter<char>| {
                     let s = v.filter(|c: &char| c.is_numeric()).collect::<String>();
-                    s.parse::<u32>().map_err(|_| ParseError::ParseIntError(s))
+                    s.parse::<T>().map_err(|_| ParseError::ParseIntError(s))
                 })
                 .parse(s)
         }
@@ -693,22 +698,25 @@ mod parsers_internal {
 
     // Signed Number
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-    pub struct SignedNumber<'a>(&'a str);
+    pub struct SignedNumber<'a, T>(&'a str, PhantomData<T>);
 
-    impl<'a> SignedNumber<'a> {
+    impl<'a, T> SignedNumber<'a, T> {
         pub fn new(seps: &'a str) -> Self {
-            SignedNumber(seps)
+            SignedNumber(seps, PhantomData)
         }
     }
 
-    impl<'b> Parser for SignedNumber<'b> {
-        type Output = i32;
+    impl<'b, T> Parser for SignedNumber<'b, T>
+    where
+        T: Neg<Output = T> + FromStr,
+    {
+        type Output = T;
 
         fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
             parsers::char('-')
                 .ignore_and_then(parsers::number_with_seps(self.0))
-                .map(|n| -(n as i32))
-                .or(parsers::number_with_seps(self.0).map(|n| n as i32))
+                .map(|n: T| -(n as T))
+                .or(parsers::number_with_seps(self.0))
                 .parse(s)
         }
     }
@@ -933,22 +941,24 @@ pub mod parsers {
     }
 
     #[inline]
-    pub fn number<'a>() -> parsers_internal::Number<'a> {
+    pub fn number<'a, T>() -> parsers_internal::Number<'a, T> {
         parsers_internal::Number::new("")
     }
 
     #[inline]
-    pub fn number_with_seps<'a>(sep_chars: &'a str) -> parsers_internal::Number<'a> {
+    pub fn number_with_seps<'a, T>(sep_chars: &'a str) -> parsers_internal::Number<'a, T> {
         parsers_internal::Number::new(sep_chars)
     }
 
     #[inline]
-    pub fn signed_number<'a>() -> parsers_internal::SignedNumber<'a> {
+    pub fn signed_number<'a, T>() -> parsers_internal::SignedNumber<'a, T> {
         parsers_internal::SignedNumber::new("")
     }
 
     #[inline]
-    pub fn signed_number_with_seps<'a>(sep_chars: &'a str) -> parsers_internal::SignedNumber<'a> {
+    pub fn signed_number_with_seps<'a, T>(
+        sep_chars: &'a str,
+    ) -> parsers_internal::SignedNumber<'a, T> {
         parsers_internal::SignedNumber::new(sep_chars)
     }
 }
@@ -1427,7 +1437,7 @@ bjgGqQGbQnjGQgnQgbGgjJnDLHLdfPVtdDmLZdBFVVZttdTf
     #[test]
     fn ignore() {
         assert_eq!(
-            parsers::number()
+            parsers::number::<u32>()
                 .ignore_and_then(parsers::any())
                 .parse("123abc")
                 .finish(),
@@ -1435,14 +1445,14 @@ bjgGqQGbQnjGQgnQgbGgjJnDLHLdfPVtdDmLZdBFVVZttdTf
         );
         assert_eq!(
             parsers::char('b')
-                .ignore_and_then(parsers::number())
+                .ignore_and_then(parsers::number::<u32>())
                 .parse("a123abc")
                 .finish(),
             Err((ParseError::UnexpectedChar('a'), "a123abc"))
         );
         assert_eq!(
-            parsers::number()
-                .ignore_and_then(parsers::number())
+            parsers::number::<u32>()
+                .ignore_and_then(parsers::number::<u32>())
                 .parse("123abc")
                 .finish(),
             Err((ParseError::ParseIntError("".to_string()), "abc"))
@@ -1467,14 +1477,14 @@ bjgGqQGbQnjGQgnQgbGgjJnDLHLdfPVtdDmLZdBFVVZttdTf
         );
         assert_eq!(
             parsers::char('b')
-                .skip(parsers::number())
+                .skip(parsers::number::<u32>())
                 .parse("a123abc")
                 .finish(),
             Err((ParseError::UnexpectedChar('a'), "a123abc"))
         );
         assert_eq!(
-            parsers::number()
-                .skip(parsers::number())
+            parsers::number::<u32>()
+                .skip(parsers::number::<u32>())
                 .parse("123abc")
                 .finish(),
             Err((ParseError::ParseIntError("".to_string()), "abc"))
@@ -1492,14 +1502,14 @@ bjgGqQGbQnjGQgnQgbGgjJnDLHLdfPVtdDmLZdBFVVZttdTf
         );
         assert_eq!(
             parsers::char('b')
-                .and_then(parsers::number())
+                .and_then(parsers::number::<u32>())
                 .parse("a123abc")
                 .finish(),
             Err((ParseError::UnexpectedChar('a'), "a123abc"))
         );
         assert_eq!(
-            parsers::number()
-                .and_then(parsers::number())
+            parsers::number::<u32>()
+                .and_then(parsers::number::<u32>())
                 .parse("123abc")
                 .finish(),
             Err((ParseError::ParseIntError("".to_string()), "abc"))
