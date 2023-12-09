@@ -1,5 +1,8 @@
 use num::traits::{One, Zero};
-use std::ops::{Div, Mul, RemAssign, SubAssign};
+use std::{
+    mem::swap,
+    ops::{Div, Mul, RemAssign, SubAssign},
+};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 struct BezoutCoefficients<T> {
@@ -53,18 +56,17 @@ where
 }
 
 fn extended_euclidean_algoritm<T>(
-    a: BezoutCoefficients<T>,
+    mut a: BezoutCoefficients<T>,
     mut b: BezoutCoefficients<T>,
 ) -> BezoutCoefficients<T>
 where
     T: Zero + Div<T, Output = T> + Mul<T, Output = T> + SubAssign<T> + Clone,
 {
-    if b.is_terminal() {
-        a
-    } else {
-        b %= a.clone();
-        extended_euclidean_algoritm(a, b)
+    while !b.is_terminal() {
+        a %= b.clone();
+        swap(&mut a, &mut b);
     }
+    a
 }
 
 /// Returns GCD and the Bezout Coefficients for a and b
@@ -78,4 +80,19 @@ where
         BezoutCoefficients::init(b, T::zero(), T::one()),
     )
     .to_tuple()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test() {
+        assert_eq!(bezout_coefficients(12, 42), (6, (-3), 1));
+        assert_eq!(bezout_coefficients(42, 12), (6, 1, (-3)));
+        assert_eq!(bezout_coefficients(240, 46), (2, (-9), 47));
+        assert_eq!(bezout_coefficients(46, 240), (2, 47, (-9)));
+        assert_eq!(bezout_coefficients(18, 25), (1, 7, (-5)));
+        assert_eq!(bezout_coefficients(25, 18), (1, (-5), 7));
+    }
 }
