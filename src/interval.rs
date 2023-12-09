@@ -180,7 +180,7 @@ where
                     end: other.begin.clone().invert(),
                 },
                 Interval {
-                    begin: other.begin.clone().invert(),
+                    begin: other.end.clone().invert(),
                     end: self.end.clone(),
                 },
             ]
@@ -225,7 +225,7 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DisjointIntervalUnion<T>
 where
     T: Ord,
