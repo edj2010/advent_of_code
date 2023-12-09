@@ -1,4 +1,4 @@
-use std::{hash::Hash, collections::HashMap};
+use std::{collections::HashMap, hash::Hash};
 
 pub trait Itertools: Iterator + Sized {
     fn value_counts(self) -> HashMap<Self::Item, u32>
@@ -10,3 +10,5 @@ pub trait Itertools: Iterator + Sized {
         counts
     }
 }
+
+impl<T> Itertools for T where T: Iterator {}
