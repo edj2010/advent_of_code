@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ParseError {
     ParseIntError(String),
