@@ -1,6 +1,7 @@
 use num::traits::Zero;
 use std::ops::{AddAssign, Sub, SubAssign};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DifferenceSequence<T> {
     state: Vec<T>,
 }
