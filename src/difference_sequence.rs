@@ -42,7 +42,7 @@ impl<T> DifferenceSequence<T> {
     where
         T: SubAssign<T> + Clone,
     {
-        for idx in 1..self.state.len() {
+        for idx in (1..self.state.len()).rev() {
             let difference = self.state[idx].clone();
             self.state[idx - 1] -= difference;
         }
