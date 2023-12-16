@@ -51,11 +51,11 @@ where
         }
     }
 
-    pub fn all_contained_points<'a>(&'a self) -> GridDimensionIterator<'a, T> {
+    pub fn all_contained_points(self) -> GridDimensionIterator<T> {
         GridDimensionIterator {
             current_row: self.min_row.clone(),
             current_col: self.min_col.clone(),
-            dimension: &self,
+            dimension: self,
         }
     }
 }
@@ -66,13 +66,13 @@ where
 /// iterator over all gridpoints within a specified dimension
 /////////////
 
-pub struct GridDimensionIterator<'a, T> {
+pub struct GridDimensionIterator<T> {
     current_row: T,
     current_col: T,
-    dimension: &'a GridDimensions<T>,
+    dimension: GridDimensions<T>,
 }
 
-impl<'a, T: Step + Ord + Clone> Iterator for GridDimensionIterator<'a, T> {
+impl<T: Step + Ord + Clone> Iterator for GridDimensionIterator<T> {
     type Item = GridPoint<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -593,6 +593,11 @@ impl<T> Grid<T> {
 
     pub fn dimensions(&self) -> GridDimensions<usize> {
         GridDimensions::new(0, self.rows, 0, self.cols)
+    }
+
+    pub fn iter_points(&self) -> GridDimensionIterator<usize> {
+        let dimensions = self.dimensions();
+        dimensions.all_contained_points()
     }
 
     pub fn get(&self, point: GridPoint<usize>) -> IndexResult<&T, usize> {
