@@ -632,6 +632,28 @@ impl<T> Grid<T> {
     pub fn into_iter(self) -> std::vec::IntoIter<T> {
         self.grid.into_iter()
     }
+
+    pub fn iter_rows(&self) -> Vec<Vec<T>>
+    where
+        T: Clone,
+    {
+        self.grid.chunks(self.cols).map(|s| s.into()).collect()
+    }
+
+    pub fn iter_cols(&self) -> Vec<Vec<T>>
+    where
+        T: Clone,
+    {
+        GridPoint::new(0, 0)
+            .traverse_by(EAST, self.dimensions())
+            .map(|col_start| {
+                col_start
+                    .traverse_by(SOUTH, self.dimensions())
+                    .map(|point| self.get(point).unwrap().clone())
+                    .collect()
+            })
+            .collect()
+    }
 }
 
 impl<T> Index<GridPoint<usize>> for Grid<T> {
