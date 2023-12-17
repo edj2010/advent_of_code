@@ -633,14 +633,14 @@ impl<T> Grid<T> {
         self.grid.into_iter()
     }
 
-    pub fn iter_rows(&self) -> Vec<Vec<T>>
+    pub fn all_rows(&self) -> Vec<Vec<T>>
     where
         T: Clone,
     {
         self.grid.chunks(self.cols).map(|s| s.into()).collect()
     }
 
-    pub fn iter_cols(&self) -> Vec<Vec<T>>
+    pub fn all_cols(&self) -> Vec<Vec<T>>
     where
         T: Clone,
     {
