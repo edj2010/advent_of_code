@@ -39,21 +39,21 @@ impl<T> GridDimensions<T> {
 
     pub fn rows(self) -> T
     where
-        T: Sub<T, Output = T>,
+        T: Sub<T, Output = T> + Add<T, Output = T>,
     {
         self.max_row - self.min_row
     }
 
     pub fn cols(self) -> T
     where
-        T: Sub<T, Output = T>,
+        T: Sub<T, Output = T> + Add<T, Output = T>,
     {
         self.max_col - self.min_col
     }
 
     pub fn area(self) -> T
     where
-        T: Sub<T, Output = T> + Mul<T, Output = T>,
+        T: Sub<T, Output = T> + Add<T, Output = T> + Mul<T, Output = T> + Step,
     {
         (self.max_row - self.min_row) * (self.max_col - self.min_col)
     }
@@ -83,8 +83,8 @@ where
     pub fn grow_to_contain(self, point: GridPoint<T>) -> Self {
         let min_row = self.min_row.min(point.row.clone());
         let min_col = self.min_col.min(point.col.clone());
-        let max_row = self.max_row.max(point.row);
-        let max_col = self.max_col.max(point.col);
+        let max_row = self.max_row.max(Step::forward(point.row,1));
+        let max_col = self.max_col.max(Step::forward(point.col,1));
         GridDimensions {
             min_row,
             min_col,
