@@ -58,6 +58,19 @@ where
             dimension: self,
         }
     }
+
+    pub fn grow_to_contain(self, point: GridPoint<T>) -> Self {
+        let min_row = self.min_row.min(point.row.clone());
+        let min_col = self.min_col.min(point.col.clone());
+        let max_row = self.max_row.max(point.row);
+        let max_col = self.max_col.max(point.col);
+        GridDimensions {
+            min_row,
+            min_col,
+            max_row,
+            max_col,
+        }
+    }
 }
 
 /////////////
@@ -727,6 +740,15 @@ impl<T> Lattice<T> {
 
     pub fn entry(&mut self, point: GridPoint<isize>) -> LatticeEntry<'_, T> {
         LatticeEntry(self.points.entry(point))
+    }
+
+    pub fn bounding_box(&self) -> Option<GridDimensions<isize>> {
+        self.points
+            .iter()
+            .fold(None, |grid_dimension, (&point, _)| match grid_dimension {
+                None => Some(GridDimensions::of_points_inclusive(point, point)),
+                Some(dimension) => Some(dimension.grow_to_contain(point)),
+            })
     }
 
     pub fn intersects_block(&self, block: &Block<isize>) -> bool {
