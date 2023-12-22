@@ -39,16 +39,16 @@ impl<T> GridDimensions<T> {
 
     pub fn rows(self) -> T
     where
-        T: Sub<T, Output = T> 
+        T: Sub<T, Output = T>,
     {
-        (self.max_row - self.min_row) 
+        self.max_row - self.min_row
     }
 
     pub fn cols(self) -> T
     where
-        T: Sub<T, Output = T> 
+        T: Sub<T, Output = T>,
     {
-        (self.max_col - self.min_col) 
+        self.max_col - self.min_col
     }
 
     pub fn area(self) -> T
