@@ -83,8 +83,8 @@ where
     pub fn grow_to_contain(self, point: GridPoint<T>) -> Self {
         let min_row = self.min_row.min(point.row.clone());
         let min_col = self.min_col.min(point.col.clone());
-        let max_row = self.max_row.max(Step::forward(point.row,1));
-        let max_col = self.max_col.max(Step::forward(point.col,1));
+        let max_row = self.max_row.max(Step::forward(point.row, 1));
+        let max_col = self.max_col.max(Step::forward(point.col, 1));
         GridDimensions {
             min_row,
             min_col,
@@ -635,7 +635,7 @@ impl<T> Grid<T> {
     }
 
     pub fn get(&self, point: GridPoint<usize>) -> IndexResult<&T, usize> {
-        if point.row > self.rows || point.col > self.cols {
+        if point.row >= self.rows || point.col >= self.cols {
             return IndexOutOfBoundsError::err(self.rows, self.cols, point);
         }
         self.grid
@@ -644,7 +644,7 @@ impl<T> Grid<T> {
     }
 
     pub fn get_mut(&mut self, point: GridPoint<usize>) -> IndexResult<&mut T, usize> {
-        if point.row > self.rows || point.col > self.cols {
+        if point.row >= self.rows || point.col >= self.cols {
             return IndexOutOfBoundsError::err(self.rows, self.cols, point);
         }
         self.grid
@@ -653,7 +653,7 @@ impl<T> Grid<T> {
     }
 
     pub fn set(&mut self, point: GridPoint<usize>, value: T) -> IndexResult<(), usize> {
-        if point.row > self.rows || point.col > self.cols {
+        if point.row >= self.rows || point.col >= self.cols {
             return IndexOutOfBoundsError::err(self.rows, self.cols, point);
         }
         *self
