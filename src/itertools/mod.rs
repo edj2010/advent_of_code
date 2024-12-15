@@ -62,6 +62,16 @@ pub trait Itertools: Iterator + Sized {
     {
         pairs::PairsWithRepeats::new(self)
     }
+
+    fn ordered_pairs(self) -> impl Iterator<Item = (Self::Item, Self::Item)>
+    where
+        Self: Clone,
+        Self::Item: Clone,
+    {
+        self.clone()
+            .into_iter()
+            .flat_map(move |a| self.clone().into_iter().map(move |b| (a.clone(), b)))
+    }
 }
 
 impl<T> Itertools for T where T: Iterator {}
