@@ -1,5 +1,7 @@
 use std::{collections::HashMap, hash::Hash};
 
+pub mod pairs;
+
 pub trait Itertools: Iterator + Sized {
     fn value_counts(self) -> HashMap<Self::Item, u32>
     where
@@ -43,6 +45,22 @@ pub trait Itertools: Iterator + Sized {
             seen.insert(el, idx);
         }
         None
+    }
+
+    fn pairs(self) -> pairs::Pairs<Self>
+    where
+        Self: Clone,
+        Self::Item: Clone,
+    {
+        pairs::Pairs::new(self)
+    }
+
+    fn pairs_with_repeats(self) -> pairs::PairsWithRepeats<Self>
+    where
+        Self: Clone,
+        Self::Item: Clone,
+    {
+        pairs::PairsWithRepeats::new(self)
     }
 }
 

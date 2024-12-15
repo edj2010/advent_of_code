@@ -2,6 +2,7 @@
 #![feature(generic_const_exprs)]
 #![feature(never_type)]
 #![feature(step_trait)]
+#![feature(let_chains)]
 #![allow(incomplete_features)]
 
 pub mod day;
