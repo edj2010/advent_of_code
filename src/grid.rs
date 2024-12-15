@@ -1056,9 +1056,9 @@ mod tests {
                 .collect::<Vec<GridPoint<usize>>>(),
             vec![
                 GridPoint { row: 1, col: 1 },
-                GridPoint { row: 1, col: 2 },
-                GridPoint { row: 1, col: 3 },
-                GridPoint { row: 1, col: 4 }
+                GridPoint { row: 2, col: 1 },
+                GridPoint { row: 3, col: 1 },
+                GridPoint { row: 4, col: 1 }
             ]
         );
     }

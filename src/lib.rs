@@ -1,8 +1,6 @@
 #![feature(try_trait_v2)]
 #![feature(generic_const_exprs)]
 #![feature(never_type)]
-#![feature(associated_type_bounds)]
-#![feature(return_position_impl_trait_in_trait)]
 #![feature(step_trait)]
 #![allow(incomplete_features)]
 
