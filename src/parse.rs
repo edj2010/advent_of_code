@@ -832,18 +832,23 @@ mod parsers_internal {
 
     // Grid
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-    pub struct Grid<'a, P> {
-        terminator: &'a str,
+    pub struct Grid<'a, 'b, P> {
+        seperator: &'a str,
+        terminator: &'b str,
         p: P,
     }
 
-    impl<'a, P> Grid<'a, P> {
-        pub fn new(terminator: &'a str, p: P) -> Self {
-            Grid { terminator, p }
+    impl<'a, 'b, P> Grid<'a, 'b, P> {
+        pub fn new(seperator: &'a str, terminator: &'b str, p: P) -> Self {
+            Grid {
+                seperator,
+                terminator,
+                p,
+            }
         }
     }
 
-    impl<'b, T, P> Parser for Grid<'b, P>
+    impl<'b, 'c, T, P> Parser for Grid<'b, 'c, P>
     where
         P: Parser<Output = T> + Clone,
         T: Clone,
@@ -852,12 +857,26 @@ mod parsers_internal {
 
         fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
             let mut vec_of_vecs = Vec::new();
-            let (result, rest) = self.p.clone().many().skip_tag(self.terminator).parse(s)?;
+            let (result, rest) = self
+                .p
+                .clone()
+                .list(self.seperator)
+                .skip_tag(self.terminator)
+                .parse(s)?;
             vec_of_vecs.push(result.collect::<Vec<T>>());
             let (result, rest) = self
                 .p
-                .repeat(vec_of_vecs[0].len() as u32)
-                .map(|i| i.collect::<Vec<T>>())
+                .clone()
+                .and_then(
+                    parsers::tag(self.seperator)
+                        .and_then(self.p.clone())
+                        .map(|(_, v)| v)
+                        .repeat((vec_of_vecs[0].len() - 1) as u32),
+                )
+                .map(|(head, mut tail): (T, ManyIter<T>)| {
+                    tail.cons(head);
+                    tail.collect::<Vec<T>>()
+                })
                 .many_lines(self.terminator)
                 .parse(rest)?;
             vec_of_vecs.extend(result);
@@ -1116,8 +1135,12 @@ pub trait Parser: Sized {
     }
 
     #[inline]
-    fn grid<'a>(self, terminator: &'a str) -> parsers_internal::Grid<'a, Self> {
-        parsers_internal::Grid::new(terminator, self)
+    fn grid<'a, 'b>(
+        self,
+        seperator: &'a str,
+        terminator: &'b str,
+    ) -> parsers_internal::Grid<'a, 'b, Self> {
+        parsers_internal::Grid::new(seperator, terminator, self)
     }
 
     #[inline]
@@ -1439,15 +1462,15 @@ bjgGqQGbQnjGQgnQgbGgjJnDLHLdfPVtdDmLZdBFVVZttdTf
     fn grid() {
         assert_eq!(
             parsers::chars(|c| c.is_alphabetic())
-                .grid("\n")
+                .grid("", "\n")
                 .parse("abc\ndef\nghi\n")
                 .finish(),
             Ok(Grid::from(vec!['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'], 3, 3).unwrap())
         );
         assert_eq!(
             parsers::chars(|c| c.is_alphabetic())
-                .grid("\n")
-                .parse("abc\ndef\nghi\njkl\nmno\n")
+                .grid(" ", "\n")
+                .parse("a b c\nd e f\ng h i\nj k l\nm n o\n")
                 .finish(),
             Ok(Grid::from(
                 vec!['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o'],
@@ -1458,7 +1481,7 @@ bjgGqQGbQnjGQgnQgbGgjJnDLHLdfPVtdDmLZdBFVVZttdTf
         );
         assert_eq!(
             parsers::chars(|c| c.is_alphabetic())
-                .grid("\n")
+                .grid("", "\n")
                 .parse("abc\ndefg\nhi\n")
                 .finish(),
             Err((ParseError::RemainingUnparsed, "defg\nhi\n"))
@@ -1466,14 +1489,22 @@ bjgGqQGbQnjGQgnQgbGgjJnDLHLdfPVtdDmLZdBFVVZttdTf
 
         assert_eq!(
             parsers::chars(|c| c.is_alphabetic())
-                .grid("\n")
+                .grid(" ", "\n")
+                .parse("a bc\ndef\nghi")
+                .finish(),
+            Err((ParseError::UnmatchedTag("\n".to_owned()), "c\ndef\nghi"))
+        );
+
+        assert_eq!(
+            parsers::chars(|c| c.is_alphabetic())
+                .grid("", "\n")
                 .parse("abc\ndef\nghi")
                 .finish(),
             Err((ParseError::RemainingUnparsed, "ghi"))
         );
         assert_eq!(
             parsers::chars(|c| c != '\n')
-                .grid("\n")
+                .grid("", "\n")
                 .parse(
                     "QvJvQbjbCgCQRBhzzRsNWNBC
 bjgGqQGbQnjGQgnQgbGgjJnDLHLdfPVtdDmLZdBFVVZttdTf
