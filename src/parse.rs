@@ -1,3 +1,6 @@
+use std::convert::Infallible;
+use std::ops::{ControlFlow, FromResidual, Try};
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ParseError {
     ParseIntError(String),
@@ -105,6 +108,30 @@ impl<'a, T> ParseState<'a, T> {
     }
 }
 
+impl<'a, T> FromResidual<ParseState<'a, Infallible>> for ParseState<'a, T> {
+    fn from_residual(residual: <Self as Try>::Residual) -> Self {
+        match residual {
+            ParseState::Err { error, rest } => ParseState::Err { error, rest },
+        }
+    }
+}
+
+impl<'a, T> Try for ParseState<'a, T> {
+    type Output = (T, &'a str);
+    type Residual = ParseState<'a, Infallible>;
+    fn from_output(output: Self::Output) -> Self {
+        let (result, rest) = output;
+        ParseState::Ok { result, rest }
+    }
+
+    fn branch(self) -> std::ops::ControlFlow<Self::Residual, Self::Output> {
+        match self {
+            ParseState::Ok { result, rest } => ControlFlow::Continue((result, rest)),
+            ParseState::Err { error, rest } => ControlFlow::Break(ParseState::Err { error, rest }),
+        }
+    }
+}
+
 ///////
 ///
 /// Parser State interface
@@ -136,7 +163,7 @@ impl<'a, T> ParseState<'a, T> {
 mod parsers_internal {
     use std::{collections::VecDeque, marker::PhantomData, ops::Neg, str::FromStr};
 
-    use super::{parsers, ParseError, ParseState, Parser};
+    use super::{super::grid, parsers, ParseError, ParseState, Parser};
 
     ////////
     ///
@@ -803,6 +830,44 @@ mod parsers_internal {
         }
     }
 
+    // Grid
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    pub struct Grid<'a, P> {
+        terminator: &'a str,
+        p: P,
+    }
+
+    impl<'a, P> Grid<'a, P> {
+        pub fn new(terminator: &'a str, p: P) -> Self {
+            Grid { terminator, p }
+        }
+    }
+
+    impl<'b, T, P> Parser for Grid<'b, P>
+    where
+        P: Parser<Output = T> + Clone,
+        T: Clone,
+    {
+        type Output = grid::Grid<T>;
+
+        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
+            let mut vec_of_vecs = Vec::new();
+            let (result, rest) = self.p.clone().many().skip_tag(self.terminator).parse(s)?;
+            vec_of_vecs.push(result.collect::<Vec<T>>());
+            let (result, rest) = self
+                .p
+                .repeat(vec_of_vecs[0].len() as u32)
+                .map(|i| i.collect::<Vec<T>>())
+                .many_lines(self.terminator)
+                .parse(rest)?;
+            vec_of_vecs.extend(result);
+            ParseState::Ok {
+                result: grid::Grid::of_vec_of_vecs(vec_of_vecs).unwrap(),
+                rest,
+            }
+        }
+    }
+
     // IngoreAndThen
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     pub struct IgnoreAndThen<P, Q> {
@@ -1051,6 +1116,11 @@ pub trait Parser: Sized {
     }
 
     #[inline]
+    fn grid<'a>(self, terminator: &'a str) -> parsers_internal::Grid<'a, Self> {
+        parsers_internal::Grid::new(terminator, self)
+    }
+
+    #[inline]
     fn maybe(self) -> parsers_internal::Maybe<Self> {
         parsers_internal::Maybe::new(self)
     }
@@ -1058,6 +1128,8 @@ pub trait Parser: Sized {
 
 #[cfg(test)]
 mod tests {
+
+    use crate::grid::Grid;
 
     use super::*;
 
@@ -1360,6 +1432,59 @@ bjgGqQGbQnjGQgnQgbGgjJnDLHLdfPVtdDmLZdBFVVZttdTf
                 "QvJvQbjbCgCQRBhzzRsNWNBC".to_owned(),
                 "bjgGqQGbQnjGQgnQgbGgjJnDLHLdfPVtdDmLZdBFVVZttdTf".to_owned()
             ]
+        );
+    }
+
+    #[test]
+    fn grid() {
+        assert_eq!(
+            parsers::chars(|c| c.is_alphabetic())
+                .grid("\n")
+                .parse("abc\ndef\nghi\n")
+                .finish(),
+            Ok(Grid::from(vec!['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'], 3, 3).unwrap())
+        );
+        assert_eq!(
+            parsers::chars(|c| c.is_alphabetic())
+                .grid("\n")
+                .parse("abc\ndef\nghi\njkl\nmno\n")
+                .finish(),
+            Ok(Grid::from(
+                vec!['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o'],
+                5,
+                3
+            )
+            .unwrap())
+        );
+        assert_eq!(
+            parsers::chars(|c| c.is_alphabetic())
+                .grid("\n")
+                .parse("abc\ndefg\nhi\n")
+                .finish(),
+            Err((ParseError::RemainingUnparsed, "defg\nhi\n"))
+        );
+
+        assert_eq!(
+            parsers::chars(|c| c.is_alphabetic())
+                .grid("\n")
+                .parse("abc\ndef\nghi")
+                .finish(),
+            Err((ParseError::RemainingUnparsed, "ghi"))
+        );
+        assert_eq!(
+            parsers::chars(|c| c != '\n')
+                .grid("\n")
+                .parse(
+                    "QvJvQbjbCgCQRBhzzRsNWNBC
+bjgGqQGbQnjGQgnQgbGgjJnDLHLdfPVtdDmLZdBFVVZttdTf
+"
+                )
+                .finish(),
+            Err((
+                ParseError::RemainingUnparsed,
+                "bjgGqQGbQnjGQgnQgbGgjJnDLHLdfPVtdDmLZdBFVVZttdTf
+"
+            ))
         );
     }
 

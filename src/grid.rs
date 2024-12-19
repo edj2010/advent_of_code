@@ -576,11 +576,35 @@ type IndexResult<T, S> = Result<T, IndexOutOfBoundsError<S>>;
 /// simple datastructure for holding a grid of values
 ////////////
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Grid<T> {
     rows: usize,
     cols: usize,
     grid: Vec<T>,
+}
+
+impl<T: Debug> Debug for Grid<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for row in 0..self.rows {
+            for col in 0..self.cols {
+                write!(f, "{:?} ", self.get(GridPoint::new(row, col)))?
+            }
+            write!(f, "\n")?
+        }
+        write!(f, "")
+    }
+}
+
+impl<T: Display> Display for Grid<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for row in 0..self.rows {
+            for col in 0..self.cols {
+                write!(f, "{} ", self.get(GridPoint::new(row, col)).unwrap())?
+            }
+            write!(f, "\n")?
+        }
+        write!(f, "")
+    }
 }
 
 impl<T: Clone> Grid<T> {
@@ -606,7 +630,14 @@ impl<T: Clone> Grid<T> {
         rows: usize,
         cols: usize,
     ) -> Option<Self> {
-        Self::from(v.into_iter().flat_map(|i| i.into_iter()), rows, cols)
+        let mut grid: Vec<T> = Vec::with_capacity(rows * cols);
+        for (row_idx, row) in v.into_iter().enumerate() {
+            grid.extend(row);
+            if grid.len() != cols * (row_idx + 1) {
+                return None;
+            }
+        }
+        Some(Grid { rows, cols, grid })
     }
 
     pub fn of_vec_of_vecs(v: Vec<Vec<T>>) -> Option<Self> {
