@@ -370,6 +370,10 @@ pub enum Direction {
 }
 
 impl Direction {
+    pub fn all() -> [Self; 4] {
+        [Self::North, Self::East, Self::South, Self::West]
+    }
+
     pub fn rotate_left(self) -> Self {
         match self {
             Self::North => Self::West,
