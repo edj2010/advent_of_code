@@ -741,7 +741,9 @@ mod parsers_internal {
             parsers::char('-')
                 .ignore_and_then(parsers::number_with_seps(self.0))
                 .map(|n: T| -(n as T))
-                .or(parsers::number_with_seps(self.0))
+                .or(parsers::char('+')
+                    .maybe()
+                    .ignore_and_then(parsers::number_with_seps(self.0)))
                 .parse(s)
         }
     }
@@ -830,63 +832,6 @@ mod parsers_internal {
         }
     }
 
-    // Grid
-    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-    pub struct Grid<'a, 'b, P> {
-        seperator: &'a str,
-        terminator: &'b str,
-        p: P,
-    }
-
-    impl<'a, 'b, P> Grid<'a, 'b, P> {
-        pub fn new(seperator: &'a str, terminator: &'b str, p: P) -> Self {
-            Grid {
-                seperator,
-                terminator,
-                p,
-            }
-        }
-    }
-
-    impl<'b, 'c, T, P> Parser for Grid<'b, 'c, P>
-    where
-        P: Parser<Output = T> + Clone,
-        T: Clone,
-    {
-        type Output = grid::Grid<T>;
-
-        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
-            let mut vec_of_vecs = Vec::new();
-            let (result, rest) = self
-                .p
-                .clone()
-                .list(self.seperator)
-                .skip_tag(self.terminator)
-                .parse(s)?;
-            vec_of_vecs.push(result.collect::<Vec<T>>());
-            let (result, rest) = self
-                .p
-                .clone()
-                .and_then(
-                    parsers::tag(self.seperator)
-                        .and_then(self.p.clone())
-                        .map(|(_, v)| v)
-                        .repeat((vec_of_vecs[0].len() - 1) as u32),
-                )
-                .map(|(head, mut tail): (T, ManyIter<T>)| {
-                    tail.cons(head);
-                    tail.collect::<Vec<T>>()
-                })
-                .many_lines(self.terminator)
-                .parse(rest)?;
-            vec_of_vecs.extend(result);
-            ParseState::Ok {
-                result: grid::Grid::of_vec_of_vecs(vec_of_vecs).unwrap(),
-                rest,
-            }
-        }
-    }
-
     // IngoreAndThen
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     pub struct IgnoreAndThen<P, Q> {
@@ -965,6 +910,69 @@ mod parsers_internal {
                     result: None,
                     rest: s,
                 },
+            }
+        }
+    }
+
+    ////////
+    ///
+    /// Grid related
+    ///
+    ////////
+
+    // Grid
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    pub struct Grid<'a, 'b, P> {
+        seperator: &'a str,
+        terminator: &'b str,
+        p: P,
+    }
+
+    impl<'a, 'b, P> Grid<'a, 'b, P> {
+        pub fn new(seperator: &'a str, terminator: &'b str, p: P) -> Self {
+            Grid {
+                seperator,
+                terminator,
+                p,
+            }
+        }
+    }
+
+    impl<'b, 'c, T, P> Parser for Grid<'b, 'c, P>
+    where
+        P: Parser<Output = T> + Clone,
+        T: Clone,
+    {
+        type Output = grid::Grid<T>;
+
+        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
+            let mut vec_of_vecs = Vec::new();
+            let (result, rest) = self
+                .p
+                .clone()
+                .list(self.seperator)
+                .skip_tag(self.terminator)
+                .parse(s)?;
+            vec_of_vecs.push(result.collect::<Vec<T>>());
+            let (result, rest) = self
+                .p
+                .clone()
+                .and_then(
+                    parsers::tag(self.seperator)
+                        .and_then(self.p.clone())
+                        .map(|(_, v)| v)
+                        .repeat((vec_of_vecs[0].len() - 1) as u32),
+                )
+                .map(|(head, mut tail): (T, ManyIter<T>)| {
+                    tail.cons(head);
+                    tail.collect::<Vec<T>>()
+                })
+                .many_lines(self.terminator)
+                .parse(rest)?;
+            vec_of_vecs.extend(result);
+            ParseState::Ok {
+                result: grid::Grid::of_vec_of_vecs(vec_of_vecs).unwrap(),
+                rest,
             }
         }
     }
@@ -1326,6 +1334,8 @@ mod tests {
             parsers::signed_number().parse("-12345").finish(),
             Ok(-12345)
         );
+        assert_eq!(parsers::signed_number().parse("+12345").finish(), Ok(12345));
+        assert_eq!(parsers::signed_number().parse("12345").finish(), Ok(12345));
         assert_eq!(
             parsers::signed_number_with_seps("-")
                 .parse("-12-345")
