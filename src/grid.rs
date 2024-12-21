@@ -207,6 +207,17 @@ impl<T> GridPoint<T> {
         }
     }
 
+    pub fn try_as_type<U>(&self) -> Result<GridPoint<U>, <U as TryFrom<T>>::Error>
+    where
+        U: TryFrom<T>,
+        T: Clone,
+    {
+        Ok(GridPoint {
+            row: self.row.clone().try_into()?,
+            col: self.col.clone().try_into()?,
+        })
+    }
+
     pub fn add_checked<S>(
         self,
         rhs: GridPointDelta<S>,
@@ -280,6 +291,17 @@ impl<T> GridPointDelta<T> {
             row_delta: self.row_delta.clone().into(),
             col_delta: self.col_delta.clone().into(),
         }
+    }
+
+    pub fn try_as_type<U>(&self) -> Result<GridPointDelta<U>, <U as TryFrom<T>>::Error>
+    where
+        U: TryFrom<T>,
+        T: Clone,
+    {
+        Ok(GridPointDelta {
+            row_delta: self.row_delta.clone().try_into()?,
+            col_delta: self.col_delta.clone().try_into()?,
+        })
     }
 
     pub fn row_delta(&self) -> &T {
