@@ -271,6 +271,31 @@ mod parsers_internal {
         }
     }
 
+    // CharMap
+    #[derive(Debug, PartialEq, Eq, Clone)]
+    pub struct CharMap<T, F: Fn(char) -> Option<T>>(F);
+
+    impl<T, F: Fn(char) -> Option<T>> CharMap<T, F> {
+        pub fn new(f: F) -> Self {
+            CharMap(f)
+        }
+    }
+
+    impl<T, F: Fn(char) -> Option<T>> Parser for CharMap<T, F> {
+        type Output = T;
+
+        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
+            let mut cs = s.chars();
+            match cs.next() {
+                None => ParseState::error_end_of_string(s),
+                Some(c) => match (self.0)(c) {
+                    None => ParseState::error_unexpected_char(c, s),
+                    Some(result) => ParseState::ok(result, cs.as_str()),
+                },
+            }
+        }
+    }
+
     // TagReplace
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     pub struct TagReplace<'a, T>(&'a str, T);
@@ -1006,6 +1031,11 @@ pub mod parsers {
     }
 
     #[inline]
+    pub fn char_map<T, F: Fn(char) -> Option<T>>(f: F) -> parsers_internal::CharMap<T, F> {
+        parsers_internal::CharMap::new(f)
+    }
+
+    #[inline]
     pub fn tag_replace<'a, T>(s: &'a str, t: T) -> parsers_internal::TagReplace<'a, T> {
         parsers_internal::TagReplace::new(s, t)
     }
@@ -1194,6 +1224,30 @@ mod tests {
                 .parse("d")
                 .finish(),
             Ok('d')
+        );
+    }
+
+    #[test]
+    fn char_map() {
+        assert_eq!(
+            parsers::char_map(|c: char| match c {
+                '1' => Some(1),
+                '2' => Some(2),
+                _ => None,
+            })
+            .parse("3")
+            .finish(),
+            Err((ParseError::UnexpectedChar('3'), "3"))
+        );
+        assert_eq!(
+            parsers::char_map(|c: char| match c {
+                '1' => Some(1),
+                '2' => Some(2),
+                _ => None,
+            })
+            .parse("1")
+            .finish(),
+            Ok(1)
         );
     }
 
