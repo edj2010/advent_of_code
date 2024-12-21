@@ -1033,7 +1033,7 @@ pub mod parsers {
     }
 
     #[inline]
-    pub fn signed_number<'a, T>() -> parsers_internal::SignedNumber<'a, T> {
+    pub fn signed_number<T>() -> parsers_internal::SignedNumber<'static, T> {
         parsers_internal::SignedNumber::new("")
     }
 
