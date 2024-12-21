@@ -196,6 +196,17 @@ impl<T> GridPoint<T> {
         })
     }
 
+    pub fn as_type<U>(&self) -> GridPoint<U>
+    where
+        U: From<T>,
+        T: Clone,
+    {
+        GridPoint {
+            row: self.row.clone().into(),
+            col: self.col.clone().into(),
+        }
+    }
+
     pub fn add_checked<S>(
         self,
         rhs: GridPointDelta<S>,
@@ -257,6 +268,17 @@ impl<T> GridPointDelta<T> {
         GridPointDelta {
             row_delta,
             col_delta,
+        }
+    }
+
+    pub fn as_type<U>(&self) -> GridPointDelta<U>
+    where
+        U: From<T>,
+        T: Clone,
+    {
+        GridPointDelta {
+            row_delta: self.row_delta.clone().into(),
+            col_delta: self.col_delta.clone().into(),
         }
     }
 
