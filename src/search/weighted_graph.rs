@@ -80,7 +80,13 @@ pub trait WeightedGraphWithHeuristic {
     fn cost_to_weight(&self, k: &Self::Key, c: Self::Cost) -> Self::Weight;
 
     // path
-    fn shortest_paths_to_many<F: Fn(&Self::Key) -> bool>(
+    fn shortest_paths_to_many<
+        F: Fn(
+            &Self::Key,
+            &Self::Cost,
+            &HashMap<Self::Key, (Self::Cost, HashSet<Vec<Self::Key>>)>,
+        ) -> bool,
+    >(
         &self,
         start: Self::Key,
         early_finish: F,
@@ -130,14 +136,20 @@ pub trait WeightedGraphWithHeuristic {
                     (cost.clone(), paths)
                 })
                 .clone();
-            if early_finish(&key) {
+            if early_finish(&key, &cost, &results) {
                 return (results, Some((key, (min_cost, paths))));
             }
         }
         (results, None)
     }
 
-    fn shortest_path<F: Fn(&Self::Key) -> bool>(
+    fn shortest_path<
+        F: Fn(
+            &Self::Key,
+            &Self::Cost,
+            &HashMap<Self::Key, (Self::Cost, HashSet<Vec<Self::Key>>)>,
+        ) -> bool,
+    >(
         &self,
         start: Self::Key,
         finished: F,
@@ -157,7 +169,7 @@ pub trait WeightedGraphWithHeuristic {
         start: Self::Key,
         zero_distance: Self::Cost,
     ) -> HashMap<Self::Key, (Self::Cost, HashSet<Vec<Self::Key>>)> {
-        self.shortest_paths_to_many(start, |_| false, zero_distance)
+        self.shortest_paths_to_many(start, |_, _, _| false, zero_distance)
             .0
     }
 
@@ -167,10 +179,19 @@ pub trait WeightedGraphWithHeuristic {
         end: Self::Key,
         zero_distance: Self::Cost,
     ) -> Option<(Self::Cost, HashSet<Vec<Self::Key>>)> {
-        self.shortest_paths_to_many(start, |_| false, zero_distance)
-            .0
-            .get(&end)
-            .cloned()
+        self.shortest_paths_to_many(
+            start,
+            |key, cost, results| {
+                results
+                    .get(key)
+                    .map(|(c, _)| key == &end && c > cost)
+                    .unwrap_or(false)
+            },
+            zero_distance,
+        )
+        .0
+        .get(&end)
+        .cloned()
     }
 
     // distance only
