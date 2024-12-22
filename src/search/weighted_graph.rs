@@ -1,5 +1,5 @@
 use std::cmp::{Eq, PartialEq, PartialOrd};
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::hash::Hash;
 use std::ops::Add;
 
@@ -52,32 +52,41 @@ pub trait WeightedGraph<K: Clone + Eq + Hash, W: Clone + Add<W, Output = W> + Or
         start: K,
         early_finish: F,
         zero_distance: W,
-    ) -> (HashMap<K, (W, Vec<Vec<K>>)>, Option<(K, (W, Vec<Vec<K>>))>) {
-        let mut to_search: BinaryHeap<ReverseWeightedKey<(K, Vec<K>), W>> =
-            BinaryHeap::from([ReverseWeightedKey::new(
-                (start.clone(), vec![start]),
-                zero_distance,
-            )]);
-        let mut results: HashMap<K, (W, Vec<Vec<K>>)> = HashMap::new();
+    ) -> (
+        HashMap<K, (W, HashSet<Vec<K>>)>,
+        Option<(K, (W, HashSet<Vec<K>>))>,
+    ) {
+        let mut to_search: BinaryHeap<ReverseWeightedKey<(K, Option<K>), W>> =
+            BinaryHeap::from([ReverseWeightedKey::new((start, None), zero_distance)]);
+        let mut results: HashMap<K, (W, HashSet<Vec<K>>)> = HashMap::new();
         while let Some(ReverseWeightedKey { key, weight }) = to_search.pop() {
-            let (key, path) = key;
+            let (key, from) = key;
+            let paths: HashSet<Vec<K>> = from
+                .and_then(|from| results.get(&from))
+                .map(|(_, paths)| paths)
+                .unwrap_or(&HashSet::from([vec![]]))
+                .iter()
+                .map(|path| {
+                    let mut new_path = path.clone();
+                    new_path.push(key.clone());
+                    new_path
+                })
+                .collect();
             let (min_weight, paths) = results
                 .entry(key.clone())
-                .and_modify(|(w, paths)| {
+                .and_modify(|(w, current_paths)| {
                     if weight == *w {
-                        paths.push(path.clone());
+                        current_paths.extend(paths.clone());
                     }
                 })
-                .or_insert((weight.clone(), vec![path.clone()]))
+                .or_insert((weight.clone(), paths))
                 .clone();
             if weight == min_weight {
                 self.adjacent(&key).map(|i| {
                     i.filter_map(|adjacent_key| {
                         let additional_weight = self.weight(&key, &adjacent_key)?.clone();
-                        let mut new_path = path.clone();
-                        new_path.push(adjacent_key.clone());
                         Some(ReverseWeightedKey::new(
-                            (adjacent_key, new_path),
+                            (adjacent_key, Some(key.clone())),
                             weight.clone() + additional_weight,
                         ))
                     })
@@ -100,18 +109,22 @@ pub trait WeightedGraph<K: Clone + Eq + Hash, W: Clone + Add<W, Output = W> + Or
         if let (_, Some((key, (min_weight, paths)))) =
             self.shortest_paths_to_many(start, finished, zero_distance)
         {
-            Some((key, (min_weight, paths[0].clone())))
+            Some((key, (min_weight, paths.into_iter().next()?.clone())))
         } else {
             None
         }
     }
 
-    fn shortest_paths_to_all(&self, start: K, zero_distance: W) -> HashMap<K, (W, Vec<Vec<K>>)> {
+    fn shortest_paths_to_all(
+        &self,
+        start: K,
+        zero_distance: W,
+    ) -> HashMap<K, (W, HashSet<Vec<K>>)> {
         self.shortest_paths_to_many(start, |_| false, zero_distance)
             .0
     }
 
-    fn shortest_paths(&self, start: K, end: K, zero_distance: W) -> Option<(W, Vec<Vec<K>>)> {
+    fn shortest_paths(&self, start: K, end: K, zero_distance: W) -> Option<(W, HashSet<Vec<K>>)> {
         self.shortest_paths_to_many(start, |_| false, zero_distance)
             .0
             .get(&end)
