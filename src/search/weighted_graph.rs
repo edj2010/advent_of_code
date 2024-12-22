@@ -36,32 +36,69 @@ impl<K, D: Ord> Ord for ReverseWeightedKey<K, D> {
     }
 }
 
+pub struct HeuristicWeight<W: Ord, C: Ord> {
+    weight: W,
+    cost: C,
+}
+
+impl<W: Ord, C: Ord> HeuristicWeight<W, C> {
+    pub fn new(weight: W, cost: C) -> Self {
+        HeuristicWeight { weight, cost }
+    }
+}
+
+impl<W: Ord, C: Ord> PartialEq for HeuristicWeight<W, C> {
+    fn eq(&self, other: &Self) -> bool {
+        self.weight == other.weight && self.cost == other.cost
+    }
+}
+
+impl<W: Ord, C: Ord> Eq for HeuristicWeight<W, C> {}
+
+impl<W: Ord, C: Ord> PartialOrd for HeuristicWeight<W, C> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.weight.partial_cmp(&other.weight) {
+            Some(std::cmp::Ordering::Equal) => self.cost.partial_cmp(&other.cost),
+            cmp => cmp,
+        }
+    }
+}
+
 /// K: Key type
 /// D: Distance type
 /// I: Adjacent iterator
 /// Distance: Distance function
 /// Adjacent: Adjacent function
 /// Finished: Termination function
-pub trait WeightedGraph<K: Clone + Eq + Hash, W: Clone + Add<W, Output = W> + Ord> {
-    fn weight(&self, a: &K, b: &K) -> Option<W>;
-    fn adjacent(&self, k: &K) -> Option<impl Iterator<Item = K>>;
+pub trait WeightedGraphWithHeuristic {
+    type Key: Clone + Eq + Hash;
+    type Cost: Clone + Add<Self::Cost, Output = Self::Cost> + Ord;
+    type Weight: Ord;
+
+    fn cost(&self, a: &Self::Key, b: &Self::Key) -> Option<Self::Cost>;
+    fn adjacent(&self, k: &Self::Key) -> Option<impl Iterator<Item = Self::Key>>;
+    fn cost_to_weight(&self, k: &Self::Key, c: Self::Cost) -> Self::Weight;
 
     // path
-    fn shortest_paths_to_many<F: Fn(&K) -> bool>(
+    fn shortest_paths_to_many<F: Fn(&Self::Key) -> bool>(
         &self,
-        start: K,
+        start: Self::Key,
         early_finish: F,
-        zero_distance: W,
+        zero_distance: Self::Cost,
     ) -> (
-        HashMap<K, (W, HashSet<Vec<K>>)>,
-        Option<(K, (W, HashSet<Vec<K>>))>,
+        HashMap<Self::Key, (Self::Cost, HashSet<Vec<Self::Key>>)>,
+        Option<(Self::Key, (Self::Cost, HashSet<Vec<Self::Key>>))>,
     ) {
-        let mut to_search: BinaryHeap<ReverseWeightedKey<(K, Option<K>), W>> =
-            BinaryHeap::from([ReverseWeightedKey::new((start, None), zero_distance)]);
-        let mut results: HashMap<K, (W, HashSet<Vec<K>>)> = HashMap::new();
-        while let Some(ReverseWeightedKey { key, weight }) = to_search.pop() {
-            let (key, from) = key;
-            let paths: HashSet<Vec<K>> = from
+        let mut to_search: BinaryHeap<
+            ReverseWeightedKey<(Self::Key, Option<Self::Key>, Self::Cost), Self::Weight>,
+        > = BinaryHeap::from([ReverseWeightedKey::new(
+            (start.clone(), None, zero_distance.clone()),
+            self.cost_to_weight(&start, zero_distance),
+        )]);
+        let mut results: HashMap<Self::Key, (Self::Cost, HashSet<Vec<Self::Key>>)> = HashMap::new();
+        while let Some(ReverseWeightedKey { key, weight: _ }) = to_search.pop() {
+            let (key, from, cost) = key;
+            let paths: HashSet<Vec<Self::Key>> = from
                 .and_then(|from| results.get(&from))
                 .map(|(_, paths)| paths)
                 .unwrap_or(&HashSet::from([vec![]]))
@@ -72,44 +109,44 @@ pub trait WeightedGraph<K: Clone + Eq + Hash, W: Clone + Add<W, Output = W> + Or
                     new_path
                 })
                 .collect();
-            let (min_weight, paths) = results
+            let (min_cost, paths) = results
                 .entry(key.clone())
-                .and_modify(|(w, current_paths)| {
-                    if weight == *w {
+                .and_modify(|(c, current_paths)| {
+                    if cost == *c {
                         current_paths.extend(paths.clone());
                     }
                 })
                 .or_insert_with(|| {
                     self.adjacent(&key).map(|i| {
                         i.filter_map(|adjacent_key| {
-                            let additional_weight = self.weight(&key, &adjacent_key)?.clone();
+                            let total_cost = cost.clone() + self.cost(&key, &adjacent_key)?.clone();
                             Some(ReverseWeightedKey::new(
-                                (adjacent_key, Some(key.clone())),
-                                weight.clone() + additional_weight,
+                                (adjacent_key.clone(), Some(key.clone()), total_cost.clone()),
+                                self.cost_to_weight(&adjacent_key, total_cost),
                             ))
                         })
                         .for_each(|key| to_search.push(key));
                     });
-                    (weight.clone(), paths)
+                    (cost.clone(), paths)
                 })
                 .clone();
             if early_finish(&key) {
-                return (results, Some((key, (min_weight, paths))));
+                return (results, Some((key, (min_cost, paths))));
             }
         }
         (results, None)
     }
 
-    fn shortest_path<F: Fn(&K) -> bool>(
+    fn shortest_path<F: Fn(&Self::Key) -> bool>(
         &self,
-        start: K,
+        start: Self::Key,
         finished: F,
-        zero_distance: W,
-    ) -> Option<(K, (W, Vec<K>))> {
-        if let (_, Some((key, (min_weight, paths)))) =
+        zero_distance: Self::Cost,
+    ) -> Option<(Self::Key, (Self::Cost, Vec<Self::Key>))> {
+        if let (_, Some((key, (min_cost, paths)))) =
             self.shortest_paths_to_many(start, finished, zero_distance)
         {
-            Some((key, (min_weight, paths.into_iter().next()?.clone())))
+            Some((key, (min_cost, paths.into_iter().next()?.clone())))
         } else {
             None
         }
@@ -117,14 +154,19 @@ pub trait WeightedGraph<K: Clone + Eq + Hash, W: Clone + Add<W, Output = W> + Or
 
     fn shortest_paths_to_all(
         &self,
-        start: K,
-        zero_distance: W,
-    ) -> HashMap<K, (W, HashSet<Vec<K>>)> {
+        start: Self::Key,
+        zero_distance: Self::Cost,
+    ) -> HashMap<Self::Key, (Self::Cost, HashSet<Vec<Self::Key>>)> {
         self.shortest_paths_to_many(start, |_| false, zero_distance)
             .0
     }
 
-    fn shortest_paths(&self, start: K, end: K, zero_distance: W) -> Option<(W, HashSet<Vec<K>>)> {
+    fn shortest_paths(
+        &self,
+        start: Self::Key,
+        end: Self::Key,
+        zero_distance: Self::Cost,
+    ) -> Option<(Self::Cost, HashSet<Vec<Self::Key>>)> {
         self.shortest_paths_to_many(start, |_| false, zero_distance)
             .0
             .get(&end)
@@ -132,56 +174,70 @@ pub trait WeightedGraph<K: Clone + Eq + Hash, W: Clone + Add<W, Output = W> + Or
     }
 
     // distance only
-    fn shortest_distance_to_many<F: Fn(&K) -> bool>(
+    fn shortest_distance_to_many<F: Fn(&Self::Key) -> bool>(
         &self,
-        start: K,
+        start: Self::Key,
         early_finish: F,
-        zero_distance: W,
-    ) -> (HashMap<K, W>, Option<(K, W)>) {
-        let mut to_search: BinaryHeap<ReverseWeightedKey<K, W>> =
-            BinaryHeap::from([ReverseWeightedKey::new(start, zero_distance)]);
-        let mut results: HashMap<K, W> = HashMap::new();
-        while let Some(ReverseWeightedKey { key, weight }) = to_search.pop() {
+        zero_distance: Self::Cost,
+    ) -> (
+        HashMap<Self::Key, Self::Cost>,
+        Option<(Self::Key, Self::Cost)>,
+    ) {
+        let mut to_search: BinaryHeap<ReverseWeightedKey<(Self::Key, Self::Cost), Self::Weight>> =
+            BinaryHeap::from([ReverseWeightedKey::new(
+                (start.clone(), zero_distance.clone()),
+                self.cost_to_weight(&start, zero_distance),
+            )]);
+        let mut results: HashMap<Self::Key, Self::Cost> = HashMap::new();
+        while let Some(ReverseWeightedKey {
+            key: (key, cost),
+            weight: _,
+        }) = to_search.pop()
+        {
             results.entry(key.clone()).or_insert_with(|| {
                 self.adjacent(&key).map(|i| {
                     i.filter_map(|adjacent_key| {
-                        let additional_weight = self.weight(&key, &adjacent_key)?.clone();
+                        let total_cost = cost.clone() + self.cost(&key, &adjacent_key)?.clone();
                         Some(ReverseWeightedKey::new(
-                            adjacent_key,
-                            weight.clone() + additional_weight,
+                            (adjacent_key.clone(), total_cost.clone()),
+                            self.cost_to_weight(&adjacent_key, total_cost),
                         ))
                     })
                     .for_each(|key| to_search.push(key))
                 });
-                weight.clone()
+                cost.clone()
             });
             if early_finish(&key) {
-                return (results, Some((key, weight)));
+                return (results, Some((key, cost)));
             }
         }
         (results, None)
     }
 
-    fn shortest_distance<F: Fn(&K) -> bool>(
+    fn shortest_distance<F: Fn(&Self::Key) -> bool>(
         &self,
-        start: K,
+        start: Self::Key,
         finished: F,
-        zero_distance: W,
-    ) -> Option<(K, W)> {
+        zero_distance: Self::Cost,
+    ) -> Option<(Self::Key, Self::Cost)> {
         self.shortest_distance_to_many(start, finished, zero_distance)
             .1
     }
 
-    fn shortest_distance_to_all(&self, start: K, zero_distance: W) -> HashMap<K, W> {
+    fn shortest_distance_to_all(
+        &self,
+        start: Self::Key,
+        zero_distance: Self::Cost,
+    ) -> HashMap<Self::Key, Self::Cost> {
         self.shortest_distance_to_many(start, |_| false, zero_distance)
             .0
     }
 
-    fn all_pairs_shortest_paths<I: Iterator<Item = K>>(
+    fn all_pairs_shortest_paths<I: Iterator<Item = Self::Key>>(
         &self,
         points: I,
-        zero_distance: W,
-    ) -> HashMap<K, HashMap<K, W>> {
+        zero_distance: Self::Cost,
+    ) -> HashMap<Self::Key, HashMap<Self::Key, Self::Cost>> {
         points
             .map(|p| {
                 (
@@ -193,23 +249,45 @@ pub trait WeightedGraph<K: Clone + Eq + Hash, W: Clone + Add<W, Output = W> + Or
     }
 }
 
-impl<K: Clone + Eq + Hash, W: Clone + Add<W, Output = W> + Ord> WeightedGraph<K, W>
-    for HashMap<K, HashMap<K, W>>
+pub trait WeightedGraph {
+    type Key: Clone + Eq + Hash;
+    type Cost: Clone + Add<Self::Cost, Output = Self::Cost> + Ord;
+
+    fn cost(&self, a: &Self::Key, b: &Self::Key) -> Option<Self::Cost>;
+    fn adjacent(&self, k: &Self::Key) -> Option<impl Iterator<Item = Self::Key>>;
+}
+
+impl<T> WeightedGraphWithHeuristic for T
+where
+    T: WeightedGraph,
 {
-    fn weight(&self, a: &K, b: &K) -> Option<W> {
+    type Key = <Self as WeightedGraph>::Key;
+    type Cost = <Self as WeightedGraph>::Cost;
+    type Weight = <Self as WeightedGraph>::Cost;
+
+    fn adjacent(&self, k: &Self::Key) -> Option<impl Iterator<Item = Self::Key>> {
+        self.adjacent(k)
+    }
+
+    fn cost(&self, a: &Self::Key, b: &Self::Key) -> Option<Self::Cost> {
+        self.cost(a, b)
+    }
+
+    fn cost_to_weight(&self, _k: &Self::Key, c: Self::Cost) -> Self::Weight {
+        c
+    }
+}
+
+impl<K: Clone + Eq + Hash, C: Clone + Add<C, Output = C> + Ord> WeightedGraph
+    for HashMap<K, HashMap<K, C>>
+{
+    type Key = K;
+    type Cost = C;
+
+    fn cost(&self, a: &K, b: &K) -> Option<C> {
         Some(self.get(a)?.get(b)?.clone())
     }
     fn adjacent(&self, k: &K) -> Option<impl Iterator<Item = K>> {
         Some(self.get(k)?.keys().cloned().collect::<Vec<K>>().into_iter())
     }
-}
-
-pub trait NodeValuedWeightedGraph<
-    K: Clone + Eq + Hash,
-    W: Clone + Add<W, Output = W> + Ord,
-    V: Clone + Add<W, Output = W>,
->: WeightedGraph<K, W>
-{
-    fn node_value(&self, k: &K) -> V;
-    fn node_cost(&self, k: &K) -> W;
 }
