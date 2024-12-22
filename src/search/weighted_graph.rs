@@ -64,6 +64,15 @@ impl<W: Ord, C: Ord> PartialOrd for HeuristicWeight<W, C> {
     }
 }
 
+impl<W: Ord, C: Ord> Ord for HeuristicWeight<W, C> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.weight.cmp(&other.weight) {
+            std::cmp::Ordering::Equal => self.cost.cmp(&other.cost),
+            cmp => cmp,
+        }
+    }
+}
+
 /// K: Key type
 /// D: Distance type
 /// I: Adjacent iterator
