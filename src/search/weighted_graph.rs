@@ -79,20 +79,20 @@ pub trait WeightedGraph<K: Clone + Eq + Hash, W: Clone + Add<W, Output = W> + Or
                         current_paths.extend(paths.clone());
                     }
                 })
-                .or_insert((weight.clone(), paths))
+                .or_insert_with(|| {
+                    self.adjacent(&key).map(|i| {
+                        i.filter_map(|adjacent_key| {
+                            let additional_weight = self.weight(&key, &adjacent_key)?.clone();
+                            Some(ReverseWeightedKey::new(
+                                (adjacent_key, Some(key.clone())),
+                                weight.clone() + additional_weight,
+                            ))
+                        })
+                        .for_each(|key| to_search.push(key));
+                    });
+                    (weight.clone(), paths)
+                })
                 .clone();
-            if weight == min_weight {
-                self.adjacent(&key).map(|i| {
-                    i.filter_map(|adjacent_key| {
-                        let additional_weight = self.weight(&key, &adjacent_key)?.clone();
-                        Some(ReverseWeightedKey::new(
-                            (adjacent_key, Some(key.clone())),
-                            weight.clone() + additional_weight,
-                        ))
-                    })
-                    .for_each(|key| to_search.push(key));
-                });
-            }
             if early_finish(&key) {
                 return (results, Some((key, (min_weight, paths))));
             }
