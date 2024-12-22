@@ -2,7 +2,7 @@ use std::collections::{hash_map, HashMap};
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::iter::Step;
-use std::ops::{Add, Div, Index, IndexMut, Mul, Neg, Rem, Sub};
+use std::ops::{Add, AddAssign, Div, Index, IndexMut, Mul, Neg, Rem, Sub, SubAssign};
 
 /////////////
 /// Grid Dimension
@@ -150,6 +150,40 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "({}, {})", self.row, self.col)
+    }
+}
+
+impl<T, S> AddAssign<GridPointDelta<S>> for GridPoint<T>
+where
+    T: Clone,
+    S: TryInto<T> + Add<S, Output = S> + TryFrom<T>,
+    <S as TryInto<T>>::Error: Debug,
+    <S as TryFrom<T>>::Error: Debug,
+{
+    fn add_assign(&mut self, rhs: GridPointDelta<S>) {
+        self.row = (S::try_from(self.row.clone()).unwrap() + rhs.row_delta)
+            .try_into()
+            .unwrap();
+        self.col = (S::try_from(self.col.clone()).unwrap() + rhs.col_delta)
+            .try_into()
+            .unwrap();
+    }
+}
+
+impl<T, S> SubAssign<GridPointDelta<S>> for GridPoint<T>
+where
+    T: Clone,
+    S: TryInto<T> + Sub<S, Output = S> + TryFrom<T>,
+    <S as TryInto<T>>::Error: Debug,
+    <S as TryFrom<T>>::Error: Debug,
+{
+    fn sub_assign(&mut self, rhs: GridPointDelta<S>) {
+        self.row = (S::try_from(self.row.clone()).unwrap() - rhs.row_delta)
+            .try_into()
+            .unwrap();
+        self.col = (S::try_from(self.col.clone()).unwrap() - rhs.col_delta)
+            .try_into()
+            .unwrap();
     }
 }
 
