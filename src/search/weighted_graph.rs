@@ -46,6 +46,79 @@ pub trait WeightedGraph<K: Clone + Eq + Hash, W: Clone + Add<W, Output = W> + Or
     fn weight(&self, a: &K, b: &K) -> Option<W>;
     fn adjacent(&self, k: &K) -> Option<impl Iterator<Item = K>>;
 
+    // path
+    fn shortest_paths_to_many<F: Fn(&K) -> bool>(
+        &self,
+        start: K,
+        early_finish: F,
+        zero_distance: W,
+    ) -> (HashMap<K, (W, Vec<Vec<K>>)>, Option<(K, (W, Vec<Vec<K>>))>) {
+        let mut to_search: BinaryHeap<ReverseWeightedKey<(K, Vec<K>), W>> =
+            BinaryHeap::from([ReverseWeightedKey::new(
+                (start.clone(), vec![start]),
+                zero_distance,
+            )]);
+        let mut results: HashMap<K, (W, Vec<Vec<K>>)> = HashMap::new();
+        while let Some(ReverseWeightedKey { key, weight }) = to_search.pop() {
+            let (key, path) = key;
+            let (min_weight, paths) = results
+                .entry(key.clone())
+                .and_modify(|(w, paths)| {
+                    if weight == *w {
+                        paths.push(path.clone());
+                    }
+                })
+                .or_insert((weight.clone(), vec![path.clone()]))
+                .clone();
+            if weight == min_weight {
+                self.adjacent(&key).map(|i| {
+                    i.filter_map(|adjacent_key| {
+                        let additional_weight = self.weight(&key, &adjacent_key)?.clone();
+                        let mut new_path = path.clone();
+                        new_path.push(adjacent_key.clone());
+                        Some(ReverseWeightedKey::new(
+                            (adjacent_key, new_path),
+                            weight.clone() + additional_weight,
+                        ))
+                    })
+                    .for_each(|key| to_search.push(key));
+                });
+            }
+            if early_finish(&key) {
+                return (results, Some((key, (min_weight, paths))));
+            }
+        }
+        (results, None)
+    }
+
+    fn shortest_path<F: Fn(&K) -> bool>(
+        &self,
+        start: K,
+        finished: F,
+        zero_distance: W,
+    ) -> Option<(K, (W, Vec<K>))> {
+        if let (_, Some((key, (min_weight, paths)))) =
+            self.shortest_paths_to_many(start, finished, zero_distance)
+        {
+            Some((key, (min_weight, paths[0].clone())))
+        } else {
+            None
+        }
+    }
+
+    fn shortest_paths_to_all(&self, start: K, zero_distance: W) -> HashMap<K, (W, Vec<Vec<K>>)> {
+        self.shortest_paths_to_many(start, |_| false, zero_distance)
+            .0
+    }
+
+    fn shortest_paths(&self, start: K, end: K, zero_distance: W) -> Option<(W, Vec<Vec<K>>)> {
+        self.shortest_paths_to_many(start, |_| false, zero_distance)
+            .0
+            .get(&end)
+            .cloned()
+    }
+
+    // distance only
     fn shortest_distance_to_many<F: Fn(&K) -> bool>(
         &self,
         start: K,
