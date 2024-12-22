@@ -156,18 +156,40 @@ where
 impl<T, S> Add<GridPointDelta<S>> for GridPoint<T>
 where
     S: TryInto<T> + Add<S, Output = S> + TryFrom<T>,
+    <S as TryInto<T>>::Error: Debug,
+    <S as TryFrom<T>>::Error: Debug,
 {
-    type Output = Option<GridPoint<T>>;
+    type Output = GridPoint<T>;
 
     fn add(self, rhs: GridPointDelta<S>) -> Self::Output {
-        let row: T = (S::try_from(self.row).ok()? + rhs.row_delta)
+        let row: T = (S::try_from(self.row).unwrap() + rhs.row_delta)
             .try_into()
-            .ok()?;
-        let col: T = (S::try_from(self.col).ok()? + rhs.col_delta)
+            .unwrap();
+        let col: T = (S::try_from(self.col).unwrap() + rhs.col_delta)
             .try_into()
-            .ok()?;
+            .unwrap();
 
-        Some(GridPoint::new(row, col))
+        GridPoint::new(row, col)
+    }
+}
+
+impl<T, S> Sub<GridPointDelta<S>> for GridPoint<T>
+where
+    S: TryInto<T> + Sub<S, Output = S> + TryFrom<T>,
+    <S as TryInto<T>>::Error: Debug,
+    <S as TryFrom<T>>::Error: Debug,
+{
+    type Output = GridPoint<T>;
+
+    fn sub(self, rhs: GridPointDelta<S>) -> Self::Output {
+        let row: T = (S::try_from(self.row).unwrap() - rhs.row_delta)
+            .try_into()
+            .unwrap();
+        let col: T = (S::try_from(self.col).unwrap() - rhs.col_delta)
+            .try_into()
+            .unwrap();
+
+        GridPoint::new(row, col)
     }
 }
 
@@ -227,7 +249,14 @@ impl<T> GridPoint<T> {
         S: TryInto<T> + Add<S, Output = S> + TryFrom<T>,
         T: PartialOrd,
     {
-        let result = self.add(rhs)?;
+        let row: T = (S::try_from(self.row).ok()? + rhs.row_delta)
+            .try_into()
+            .ok()?;
+        let col: T = (S::try_from(self.col).ok()? + rhs.col_delta)
+            .try_into()
+            .ok()?;
+
+        let result = GridPoint::new(row, col);
         if grid_dimensions.contains(&result) {
             Some(result)
         } else {
@@ -411,6 +440,18 @@ pub enum Direction {
     East,
     South,
     West,
+}
+
+impl<T> Mul<T> for Direction
+where
+    GridPointDelta<T>: From<Direction>,
+    T: Mul<T, Output = T> + Clone,
+{
+    type Output = GridPointDelta<T>;
+
+    fn mul(self, rhs: T) -> Self::Output {
+        GridPointDelta::<T>::from(self) * rhs
+    }
 }
 
 impl Direction {
@@ -1081,21 +1122,40 @@ impl<T> Block<T> {
             max_col: self.max_col()?,
         })
     }
+
+    pub fn add_checked<S>(
+        self,
+        rhs: GridPointDelta<S>,
+        grid_dimensions: &GridDimensions<T>,
+    ) -> Option<Block<T>>
+    where
+        T: PartialOrd,
+        S: TryInto<T> + Add<S, Output = S> + TryFrom<T> + Clone,
+    {
+        Some(Block(
+            self.0
+                .into_iter()
+                .map(|p| p.add_checked(rhs.clone(), grid_dimensions))
+                .collect::<Option<Vec<GridPoint<T>>>>()?,
+        ))
+    }
 }
 
 impl<T, S> Add<GridPointDelta<S>> for Block<T>
 where
     S: TryInto<T> + Add<S, Output = S> + TryFrom<T> + Clone,
+    <S as TryInto<T>>::Error: Debug,
+    <S as TryFrom<T>>::Error: Debug,
 {
-    type Output = Option<Block<T>>;
+    type Output = Block<T>;
 
     fn add(self, rhs: GridPointDelta<S>) -> Self::Output {
-        Some(Block(
+        Block(
             self.0
                 .into_iter()
                 .map(|p| p + rhs.clone())
-                .collect::<Option<Vec<GridPoint<T>>>>()?,
-        ))
+                .collect::<Vec<GridPoint<T>>>(),
+        )
     }
 }
 
