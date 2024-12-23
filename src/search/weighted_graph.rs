@@ -201,6 +201,18 @@ pub trait WeightedGraphWithHeuristic {
         .map(|(_, precedent_map)| precedent_map.values().sum())
     }
 
+    fn shortest_path_count_all(
+        &self,
+        start: Self::Key,
+        zero_distance: Self::Cost,
+    ) -> HashMap<Self::Key, u64> {
+        self.shortest_paths_to_many(start, |_, _, _| false, zero_distance)
+            .0
+            .into_iter()
+            .map(|(key, (_, value))| (key, value.values().sum()))
+            .collect()
+    }
+
     // distance only
     fn shortest_distance_to_many<F: Fn(&Self::Key) -> bool>(
         &self,
