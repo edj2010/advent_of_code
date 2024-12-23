@@ -205,11 +205,11 @@ pub trait WeightedGraphWithHeuristic {
         &self,
         start: Self::Key,
         zero_distance: Self::Cost,
-    ) -> HashMap<Self::Key, u64> {
+    ) -> HashMap<Self::Key, (Self::Cost, u64)> {
         self.shortest_paths_to_many(start, |_, _, _| false, zero_distance)
             .0
             .into_iter()
-            .map(|(key, (_, value))| (key, value.values().sum()))
+            .map(|(key, (cost, value))| (key, (cost, value.values().sum())))
             .collect()
     }
 
