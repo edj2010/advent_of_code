@@ -3,6 +3,7 @@
 #![feature(never_type)]
 #![feature(step_trait)]
 #![feature(let_chains)]
+#![feature(impl_trait_in_assoc_type)]
 #![allow(incomplete_features)]
 
 pub mod day;
