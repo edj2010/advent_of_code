@@ -7,6 +7,7 @@ mod grid_dimension;
 mod grid_point;
 mod iterators;
 mod lattice;
+mod maze;
 
 pub use block::Block;
 pub use constants::*;
@@ -15,6 +16,7 @@ pub use grid::Grid;
 pub use grid_dimension::GridDimensions;
 pub use grid_point::{GridPoint, GridPointDelta};
 pub use lattice::Lattice;
+pub use maze::{Cell, Maze};
 
 ////////////
 /// Tests

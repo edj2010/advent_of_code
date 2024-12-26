@@ -161,7 +161,13 @@ impl<'a, T> ParseState<'a, T> {
 ///////
 
 mod parsers_internal {
-    use std::{collections::VecDeque, marker::PhantomData, ops::Neg, str::FromStr};
+    use std::{
+        collections::{HashMap, VecDeque},
+        hash::Hash,
+        marker::PhantomData,
+        ops::Neg,
+        str::FromStr,
+    };
 
     use super::{super::grid, parsers, ParseError, ParseState, Parser};
 
@@ -1001,6 +1007,89 @@ mod parsers_internal {
             }
         }
     }
+
+    // GridWithSpecialCells
+    pub struct GridWithSpecialCells<'a, 'b, P> {
+        seperator: &'a str,
+        terminator: &'b str,
+        p: P,
+    }
+
+    impl<'a, 'b, P> GridWithSpecialCells<'a, 'b, P> {
+        pub fn new(seperator: &'a str, terminator: &'b str, p: P) -> Self {
+            GridWithSpecialCells {
+                seperator,
+                terminator,
+                p,
+            }
+        }
+    }
+
+    impl<'b, 'c, T, U, P> Parser for GridWithSpecialCells<'b, 'c, P>
+    where
+        P: Parser<Output = (T, Option<U>)> + Clone,
+        U: Eq + Hash + Clone,
+        T: Clone,
+    {
+        type Output = (grid::Grid<T>, HashMap<U, Vec<grid::GridPoint<usize>>>);
+
+        fn parse<'a>(self, s: &'a str) -> ParseState<'a, Self::Output> {
+            let mut vec_of_vecs = Vec::new();
+            let mut special_points = HashMap::new();
+            let (first_row, rest) = self
+                .p
+                .clone()
+                .list(self.seperator)
+                .skip_tag(self.terminator)
+                .parse(s)?;
+            first_row
+                .clone()
+                .enumerate()
+                .filter_map(|(idx, (_, b))| b.map(|b| (idx, b)))
+                .for_each(|(col, key)| {
+                    let point = grid::GridPoint::new(0, col);
+                    special_points
+                        .entry(key)
+                        .and_modify(|v: &mut Vec<grid::GridPoint<usize>>| v.push(point))
+                        .or_insert(vec![point]);
+                });
+            vec_of_vecs.push(first_row.map(|(a, _)| a).collect::<Vec<T>>());
+            let (result, rest) = self
+                .p
+                .clone()
+                .and_then(
+                    parsers::tag(self.seperator)
+                        .and_then(self.p.clone())
+                        .map(|(_, v)| v)
+                        .repeat((vec_of_vecs[0].len() - 1) as u32),
+                )
+                .map(|(head, mut tail)| {
+                    tail.cons(head);
+                    tail
+                })
+                .many_lines(self.terminator)
+                .parse(rest)?;
+            result.clone().enumerate().for_each(|(row_m1, row)| {
+                row.enumerate()
+                    .filter_map(|(col, (_, special))| special.map(|b| (col, b)))
+                    .for_each(|(col, key)| {
+                        let point = grid::GridPoint::new(1 + row_m1, col);
+                        special_points
+                            .entry(key)
+                            .and_modify(|v: &mut Vec<grid::GridPoint<usize>>| v.push(point))
+                            .or_insert(vec![point]);
+                    })
+            });
+            vec_of_vecs.extend(result.map(|i| i.map(|(cell, _)| cell).collect::<Vec<T>>()));
+            ParseState::Ok {
+                result: (
+                    grid::Grid::of_vec_of_vecs(vec_of_vecs).unwrap(),
+                    special_points,
+                ),
+                rest,
+            }
+        }
+    }
 }
 
 pub mod parsers {
@@ -1180,6 +1269,15 @@ pub trait Parser: Sized {
         terminator: &'b str,
     ) -> parsers_internal::Grid<'a, 'b, Self> {
         parsers_internal::Grid::new(seperator, terminator, self)
+    }
+
+    #[inline]
+    fn grid_with_special_cells<'a, 'b>(
+        self,
+        seperator: &'a str,
+        terminator: &'b str,
+    ) -> parsers_internal::GridWithSpecialCells<'a, 'b, Self> {
+        parsers_internal::GridWithSpecialCells::new(seperator, terminator, self)
     }
 
     #[inline]
