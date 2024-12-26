@@ -130,6 +130,7 @@ impl<Key: Clone + Eq + Hash + Debug, Cost: Clone + Debug + Add<Cost, Output = Co
     pub fn shortest_path(&self, to: &Key) -> Vec<Key> {
         let mut path = vec![to];
         let mut current = to;
+
         while let Some(Some(prev)) = self
             .0
             .get(current)
@@ -163,7 +164,7 @@ impl<Key: Clone + Eq + Hash + Debug, Cost: Clone + Debug + Add<Cost, Output = Co
 pub struct ShortestPathPrecedentMap<
     Key: Clone + Eq + Hash + Debug,
     Cost: Clone + Add<Cost, Output = Cost> + Ord + Debug,
->(HashMap<Key, (Cost, HashSet<Key>)>);
+>(HashMap<Key, (Cost, HashSet<Option<Key>>)>);
 
 impl<Key: Clone + Eq + Hash + Debug, Cost: Clone + Debug + Add<Cost, Output = Cost> + Ord>
     ShortestPathPrecedentMap<Key, Cost>
@@ -173,16 +174,14 @@ impl<Key: Clone + Eq + Hash + Debug, Cost: Clone + Debug + Add<Cost, Output = Co
     }
 
     fn maybe_add_paths(&mut self, from: &Option<Key>, to: &Key, cost: &Cost) {
-        if let Some(from) = from {
-            self.0
-                .entry(to.clone())
-                .and_modify(|(min_cost, from_set)| {
-                    if min_cost == cost {
-                        from_set.insert(from.clone());
-                    }
-                })
-                .or_insert((cost.clone(), HashSet::from([from.clone()])));
-        }
+        self.0
+            .entry(to.clone())
+            .and_modify(|(min_cost, from_set)| {
+                if min_cost == cost {
+                    from_set.insert(from.clone());
+                }
+            })
+            .or_insert((cost.clone(), HashSet::from([from.clone()])));
     }
 
     fn contains(&self, key: &Key) -> bool {
@@ -203,7 +202,7 @@ impl<Key: Clone + Eq + Hash + Debug, Cost: Clone + Debug + Add<Cost, Output = Co
     pub fn shortest_path(&self, to: &Key) -> Vec<Key> {
         let mut path = vec![to];
         let mut current = to;
-        while let Some(prev) = self
+        while let Some(Some(prev)) = self
             .0
             .get(current)
             .and_then(|(_, precedents)| precedents.iter().next())
@@ -225,7 +224,8 @@ impl<Key: Clone + Eq + Hash + Debug, Cost: Clone + Debug + Add<Cost, Output = Co
             if let Some((_, precedents)) = self.0.get(&next) {
                 precedents
                     .iter()
-                    .for_each(|key| to_search.push_back(key.clone()));
+                    .filter_map(|key| key.clone())
+                    .for_each(|key| to_search.push_back(key));
             }
         }
         seen
