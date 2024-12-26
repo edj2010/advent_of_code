@@ -1,5 +1,5 @@
 use super::super::search;
-use super::{direction, grid, grid_point};
+use super::{direction, grid, grid_dimension, grid_point};
 
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -44,6 +44,10 @@ impl<
             move_cost,
             end: Some(end),
         }
+    }
+
+    pub fn dimensions(&self) -> grid_dimension::GridDimensions<usize> {
+        self.grid.dimensions()
     }
 }
 
@@ -111,6 +115,10 @@ impl<F: Fn(grid_point::GridPoint<usize>, grid_point::GridPoint<usize>) -> u64> M
             move_cost,
             end: Some(end),
         }
+    }
+
+    pub fn dimensions(&self) -> grid_dimension::GridDimensions<usize> {
+        self.grid.dimensions()
     }
 }
 
