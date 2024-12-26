@@ -273,7 +273,6 @@ pub trait WeightedGraphWithHeuristic {
                 .clone()
                 .and_then(|from| results.shortest_route_count(&from))
                 .unwrap_or(1);
-            println!("{:?} {:?} {}", key, from, route_count);
             if !results.contains(&key) {
                 self.adjacent(&key).map(|i| {
                     i.filter_map(|adjacent_key| {
