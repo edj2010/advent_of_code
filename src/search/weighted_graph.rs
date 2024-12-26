@@ -1,5 +1,5 @@
 use std::cmp::{Eq, PartialEq, PartialOrd};
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::hash::Hash;
 use std::ops::Add;
 
@@ -73,12 +73,92 @@ impl<W: Ord, C: Ord> Ord for HeuristicWeight<W, C> {
     }
 }
 
-/// K: Key type
-/// D: Distance type
-/// I: Adjacent iterator
-/// Distance: Distance function
-/// Adjacent: Adjacent function
-/// Finished: Termination function
+// Helper Return Structs
+pub struct ShortestPathPrecedentMap<
+    Key: Clone + Eq + Hash,
+    Cost: Clone + Add<Cost, Output = Cost> + Ord,
+>(HashMap<Key, (Cost, HashMap<Option<Key>, u64>)>);
+
+impl<Key: Clone + Eq + Hash, Cost: Clone + Add<Cost, Output = Cost> + Ord>
+    ShortestPathPrecedentMap<Key, Cost>
+{
+    fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    fn maybe_add_paths(&mut self, from: &Option<Key>, to: &Key, cost: &Cost, count: u64) {
+        self.0
+            .entry(to.clone())
+            .and_modify(|(min_cost, from_map)| {
+                if min_cost == cost {
+                    from_map
+                        .entry(from.clone())
+                        .and_modify(|n| *n += count)
+                        .or_insert(count);
+                }
+            })
+            .or_insert((cost.clone(), HashMap::from([(from.clone(), count)])));
+    }
+
+    fn contains(&self, key: &Key) -> bool {
+        self.0.contains_key(key)
+    }
+
+    pub fn shortest_cost(&self, key: &Key) -> Option<&Cost> {
+        self.0.get(key).map(|(cost, _)| cost)
+    }
+
+    pub fn shortest_route_count(&self, to: &Key) -> Option<u64> {
+        Some(self.0.get(to)?.1.values().sum())
+    }
+
+    pub fn into_route_counts(self) -> HashMap<Key, u64> {
+        self.0
+            .into_iter()
+            .map(|(key, (_, counts))| (key, counts.values().sum()))
+            .collect()
+    }
+
+    pub fn into_shortest_costs(self) -> HashMap<Key, Cost> {
+        self.0
+            .into_iter()
+            .map(|(key, (cost, _))| (key, cost))
+            .collect()
+    }
+
+    pub fn shortest_path(&self, to: &Key) -> Vec<Key> {
+        let mut path = vec![to];
+        let mut current = to;
+        while let Some(Some(prev)) = self
+            .0
+            .get(current)
+            .and_then(|(_, precedents)| precedents.keys().next())
+        {
+            path.push(prev);
+            current = prev;
+        }
+        path.into_iter().rev().cloned().collect()
+    }
+
+    pub fn all_precedents(&self, to: &Key) -> HashSet<Key> {
+        let mut to_search: VecDeque<Key> = VecDeque::from([to.clone()]);
+        let mut seen: HashSet<Key> = HashSet::new();
+        while let Some(next) = to_search.pop_front() {
+            if seen.contains(&next) {
+                continue;
+            }
+            seen.insert(next.clone());
+            if let Some((_, precedents)) = self.0.get(&next) {
+                precedents
+                    .keys()
+                    .filter_map(|k| k.clone())
+                    .for_each(|key| to_search.push_back(key));
+            }
+        }
+        seen
+    }
+}
+
 pub trait WeightedGraphWithHeuristic {
     type Key: Clone + Eq + Hash;
     type Cost: Clone + Add<Self::Cost, Output = Self::Cost> + Ord;
@@ -90,19 +170,15 @@ pub trait WeightedGraphWithHeuristic {
 
     // paths and path count
     fn shortest_paths_to_many<
-        F: Fn(
-            &Self::Key,
-            &Self::Cost,
-            &HashMap<Self::Key, (Self::Cost, HashMap<Option<Self::Key>, u64>)>,
-        ) -> bool,
+        F: Fn(&Self::Key, &Self::Cost, &ShortestPathPrecedentMap<Self::Key, Self::Cost>) -> bool,
     >(
         &self,
         start: Self::Key,
         early_finish: F,
         zero_distance: Self::Cost,
     ) -> (
-        HashMap<Self::Key, (Self::Cost, HashMap<Option<Self::Key>, u64>)>,
-        Option<(Self::Key, (Self::Cost, HashMap<Option<Self::Key>, u64>))>,
+        ShortestPathPrecedentMap<Self::Key, Self::Cost>,
+        Option<Self::Key>,
     ) {
         let mut to_search: BinaryHeap<
             ReverseWeightedKey<(Self::Key, Option<Self::Key>, Self::Cost), Self::Weight>,
@@ -110,71 +186,48 @@ pub trait WeightedGraphWithHeuristic {
             (start.clone(), None, zero_distance.clone()),
             self.cost_to_weight(&start, zero_distance),
         )]);
-        let mut results: HashMap<Self::Key, (Self::Cost, HashMap<Option<Self::Key>, u64>)> =
-            HashMap::from([]);
-        while let Some(ReverseWeightedKey { key, weight: _ }) = to_search.pop() {
-            let (key, from, cost) = key;
+        let mut results: ShortestPathPrecedentMap<Self::Key, Self::Cost> =
+            ShortestPathPrecedentMap::new();
+        while let Some(ReverseWeightedKey {
+            key: (key, from, cost),
+            weight: _,
+        }) = to_search.pop()
+        {
             let route_count = from
                 .clone()
-                .and_then(|from| results.get(&from))
-                .map(|result| result.1.values().sum())
+                .and_then(|from| results.shortest_route_count(&from))
                 .unwrap_or(1);
-            let (min_cost, precedent_routes) = results
-                .entry(key.clone())
-                .and_modify(|(c, current_paths)| {
-                    if cost == *c {
-                        current_paths
-                            .entry(from.clone())
-                            .and_modify(|n| *n += route_count)
-                            .or_insert(route_count);
-                    }
-                })
-                .or_insert_with(|| {
-                    self.adjacent(&key).map(|i| {
-                        i.filter_map(|adjacent_key| {
-                            let total_cost = cost.clone() + self.cost(&key, &adjacent_key)?.clone();
-                            Some(ReverseWeightedKey::new(
-                                (adjacent_key.clone(), Some(key.clone()), total_cost.clone()),
-                                self.cost_to_weight(&adjacent_key, total_cost),
-                            ))
-                        })
-                        .for_each(|key| to_search.push(key));
-                    });
-                    (cost.clone(), HashMap::from([(from, route_count)]))
-                })
-                .clone();
+            if !results.contains(&key) {
+                self.adjacent(&key).map(|i| {
+                    i.filter_map(|adjacent_key| {
+                        let total_cost = cost.clone() + self.cost(&key, &adjacent_key)?.clone();
+                        Some(ReverseWeightedKey::new(
+                            (adjacent_key.clone(), Some(key.clone()), total_cost.clone()),
+                            self.cost_to_weight(&adjacent_key, total_cost),
+                        ))
+                    })
+                    .for_each(|key| to_search.push(key));
+                });
+            }
+            results.maybe_add_paths(&from, &key, &cost, route_count);
             if early_finish(&key, &cost, &results) {
-                return (results, Some((key, (min_cost, precedent_routes))));
+                return (results, Some(key));
             }
         }
         (results, None)
     }
 
-    fn shortest_path<
-        F: Fn(
-            &Self::Key,
-            &Self::Cost,
-            &HashMap<Self::Key, (Self::Cost, HashMap<Option<Self::Key>, u64>)>,
-        ) -> bool,
+    fn shortest_path_with_condition<
+        F: Fn(&Self::Key, &Self::Cost, &ShortestPathPrecedentMap<Self::Key, Self::Cost>) -> bool,
     >(
         &self,
         start: Self::Key,
         finished: F,
         zero_distance: Self::Cost,
-    ) -> Option<(Self::Key, (Self::Cost, Vec<Self::Key>))> {
-        if let (results, Some((key, (min_cost, _)))) =
-            self.shortest_paths_to_many(start, finished, zero_distance)
-        {
-            let mut path: Vec<<Self as WeightedGraphWithHeuristic>::Key> = vec![key.clone()];
-            let mut current = key.clone();
-            while let Some(prev) = results.get(&current).and_then(|(_, precendent_map)| {
-                precendent_map.keys().next().and_then(|v| v.clone())
-            }) {
-                path.push(prev.clone());
-                current = prev;
-            }
-            path = path.into_iter().rev().collect();
-            Some((key, (min_cost, path)))
+    ) -> Option<(Self::Key, Vec<Self::Key>)> {
+        if let (results, Some(key)) = self.shortest_paths_to_many(start, finished, zero_distance) {
+            let path = results.shortest_path(&key);
+            Some((key, path))
         } else {
             None
         }
@@ -189,79 +242,38 @@ pub trait WeightedGraphWithHeuristic {
         self.shortest_paths_to_many(
             start,
             |key, cost, results| {
-                results
-                    .get(key)
-                    .map(|(c, _)| key == &end && c > cost)
-                    .unwrap_or(false)
+                key == &end
+                    && results
+                        .shortest_cost(&key)
+                        .map(|c| c < cost)
+                        .unwrap_or(false)
             },
             zero_distance,
         )
         .0
-        .get(&end)
-        .map(|(_, precedent_map)| precedent_map.values().sum())
+        .shortest_route_count(&end)
     }
 
     fn shortest_path_count_all(
         &self,
         start: Self::Key,
         zero_distance: Self::Cost,
-    ) -> HashMap<Self::Key, (Self::Cost, u64)> {
+    ) -> HashMap<Self::Key, u64> {
         self.shortest_paths_to_many(start, |_, _, _| false, zero_distance)
             .0
-            .into_iter()
-            .map(|(key, (cost, value))| (key, (cost, value.values().sum())))
-            .collect()
+            .into_route_counts()
     }
 
-    // distance only
-    fn shortest_distance_to_many<F: Fn(&Self::Key) -> bool>(
+    fn shortest_distance_with_condition<
+        F: Fn(&Self::Key, &Self::Cost, &ShortestPathPrecedentMap<Self::Key, Self::Cost>) -> bool,
+    >(
         &self,
         start: Self::Key,
         early_finish: F,
         zero_distance: Self::Cost,
-    ) -> (
-        HashMap<Self::Key, Self::Cost>,
-        Option<(Self::Key, Self::Cost)>,
-    ) {
-        let mut to_search: BinaryHeap<ReverseWeightedKey<(Self::Key, Self::Cost), Self::Weight>> =
-            BinaryHeap::from([ReverseWeightedKey::new(
-                (start.clone(), zero_distance.clone()),
-                self.cost_to_weight(&start, zero_distance),
-            )]);
-        let mut results: HashMap<Self::Key, Self::Cost> = HashMap::new();
-        while let Some(ReverseWeightedKey {
-            key: (key, cost),
-            weight: _,
-        }) = to_search.pop()
-        {
-            results.entry(key.clone()).or_insert_with(|| {
-                self.adjacent(&key).map(|i| {
-                    i.filter_map(|adjacent_key| {
-                        let total_cost = cost.clone() + self.cost(&key, &adjacent_key)?.clone();
-                        Some(ReverseWeightedKey::new(
-                            (adjacent_key.clone(), total_cost.clone()),
-                            self.cost_to_weight(&adjacent_key, total_cost),
-                        ))
-                    })
-                    .for_each(|key| to_search.push(key))
-                });
-                cost.clone()
-            });
-            if early_finish(&key) {
-                return (results, Some((key, cost)));
-            }
-        }
-        (results, None)
-    }
-
-    fn shortest_distance<F: Fn(&Self::Key) -> bool>(
-        &self,
-        start: Self::Key,
-        finished: F,
-        zero_distance: Self::Cost,
     ) -> Option<(Self::Key, Self::Cost)> {
-        self.shortest_distance_to_many(start, finished, zero_distance)
-            .1
+        let (precedent_map, key) = self.shortest_paths_to_many(start, early_finish, zero_distance);
+        Some((key.clone()?, precedent_map.shortest_cost(&(key?))?.clone()))
     }
 
     fn shortest_distance_to_all(
@@ -269,8 +281,9 @@ pub trait WeightedGraphWithHeuristic {
         start: Self::Key,
         zero_distance: Self::Cost,
     ) -> HashMap<Self::Key, Self::Cost> {
-        self.shortest_distance_to_many(start, |_| false, zero_distance)
+        self.shortest_paths_to_many(start, |_, _, _| false, zero_distance)
             .0
+            .into_shortest_costs()
     }
 
     fn all_pairs_shortest_paths<I: Iterator<Item = Self::Key>>(
