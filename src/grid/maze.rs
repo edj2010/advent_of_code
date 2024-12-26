@@ -24,6 +24,34 @@ impl<
             (grid_point::GridPoint<usize>, direction::Direction),
             (grid_point::GridPoint<usize>, direction::Direction),
         ) -> u64,
+    > Maze<F>
+{
+    pub fn of_grid(grid: grid::Grid<MazeCell>, move_cost: F) -> Self {
+        Self {
+            grid,
+            move_cost,
+            end: None,
+        }
+    }
+
+    pub fn of_grid_with_end(
+        grid: grid::Grid<MazeCell>,
+        move_cost: F,
+        end: grid_point::GridPoint<usize>,
+    ) -> Self {
+        Self {
+            grid,
+            move_cost,
+            end: Some(end),
+        }
+    }
+}
+
+impl<
+        F: Fn(
+            (grid_point::GridPoint<usize>, direction::Direction),
+            (grid_point::GridPoint<usize>, direction::Direction),
+        ) -> u64,
     > search::WeightedGraphWithHeuristic for Maze<F>
 {
     type Key = (grid_point::GridPoint<usize>, direction::Direction);
