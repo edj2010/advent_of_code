@@ -3,7 +3,7 @@ use super::{direction, grid, grid_point};
 
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum Cell {
+pub enum MazeCell {
     Empty,
     Wall,
 }
@@ -14,7 +14,7 @@ pub struct Maze<
         (grid_point::GridPoint<usize>, direction::Direction),
     ) -> u64,
 > {
-    grid: grid::Grid<Cell>,
+    grid: grid::Grid<MazeCell>,
     move_cost: F,
     end: Option<grid_point::GridPoint<usize>>,
 }
@@ -41,7 +41,7 @@ impl<
                         direction,
                     ))
                 })
-                .filter(|(point, _)| self.grid.get(*point) != Ok(&Cell::Wall)),
+                .filter(|(point, _)| self.grid.get(*point) != Ok(&MazeCell::Wall)),
         )
     }
 

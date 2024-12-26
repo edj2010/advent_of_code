@@ -16,7 +16,7 @@ pub use grid::Grid;
 pub use grid_dimension::GridDimensions;
 pub use grid_point::{GridPoint, GridPointDelta};
 pub use lattice::Lattice;
-pub use maze::{Cell, Maze};
+pub use maze::{Maze, MazeCell};
 
 ////////////
 /// Tests
