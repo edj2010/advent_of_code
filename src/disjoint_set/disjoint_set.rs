@@ -7,7 +7,7 @@ pub trait DisjointSet<T: Copy> {
     fn is_connected(&mut self, a: T, b: T) -> Option<bool>;
     fn union(&mut self, a: T, b: T) -> Option<bool>;
     fn size(&self) -> usize;
-    fn all_sets(&self) -> Vec<Vec<T>>;
+    fn all_sets(&mut self) -> Vec<Vec<T>>;
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -83,7 +83,7 @@ impl DisjointSet<usize> for DisjointUsizeSet {
         self.nodes.len()
     }
 
-    fn all_sets(&self) -> Vec<Vec<usize>> {
+    fn all_sets(&mut self) -> Vec<Vec<usize>> {
         let mut sets_by_parent_key: HashMap<usize, Vec<usize>> = HashMap::new();
         for el in 0..self.size() {
             sets_by_parent_key
@@ -142,7 +142,7 @@ where
             .union(*self.key_map.get(&a)?, *self.key_map.get(&b)?)
     }
 
-    fn all_sets(&self) -> Vec<Vec<T>> {
+    fn all_sets(&mut self) -> Vec<Vec<T>> {
         let mut sets_by_parent_key: HashMap<usize, Vec<T>> = HashMap::new();
         for (&el, &key) in self.key_map.iter() {
             sets_by_parent_key
@@ -201,13 +201,11 @@ where
             .union(*self.key_map.get(&a)?, *self.key_map.get(&b)?)
     }
 
-    fn all_sets(&self) -> Vec<Vec<T>> {
+    fn all_sets(&mut self) -> Vec<Vec<T>> {
         let mut sets_by_parent_key: HashMap<usize, Vec<T>> = HashMap::new();
         for (&el, &key) in self.key_map.iter() {
-            sets_by_parent_key
-                .entry(self.inner.nodes[key].parent)
-                .or_default()
-                .push(el);
+            let root = self.inner.find_root(key).unwrap();
+            sets_by_parent_key.entry(root).or_default().push(el);
         }
         sets_by_parent_key.into_values().collect()
     }
@@ -218,6 +216,7 @@ mod tests {
 
     mod disjoint_set_usize_tests {
         use super::super::*;
+        use std::collections::BTreeSet;
 
         #[test]
         fn test_empty() {
@@ -255,11 +254,23 @@ mod tests {
                     assert_eq!(new.is_connected(a, b), Some(a % 2 == b % 2));
                 }
             }
+            let mut all_sets = new.all_sets();
+            all_sets.sort();
+            assert_eq!(all_sets.len(), 2);
+            assert_eq!(
+                BTreeSet::from_iter(all_sets[0].iter().copied()),
+                BTreeSet::from_iter(vec![0, 2, 4, 6, 8].into_iter())
+            );
+            assert_eq!(
+                BTreeSet::from_iter(all_sets[1].iter().copied()),
+                BTreeSet::from_iter(vec![1, 3, 5, 7, 9].into_iter())
+            );
         }
     }
 
     mod disjoint_set_btree_tests {
         use super::super::*;
+        use std::collections::BTreeSet;
 
         #[test]
         fn test_empty() {
@@ -294,9 +305,22 @@ mod tests {
                     assert_eq!(new.is_connected(a, b), Some(a % 20 == b % 20));
                 }
             }
+            let mut all_sets = new.all_sets();
+            all_sets.sort();
+            assert_eq!(all_sets.len(), 2);
+            assert_eq!(
+                BTreeSet::from_iter(all_sets[0].iter().copied()),
+                BTreeSet::from_iter(vec![0, 20, 40, 60, 80].into_iter())
+            );
+            assert_eq!(
+                BTreeSet::from_iter(all_sets[1].iter().copied()),
+                BTreeSet::from_iter(vec![10, 30, 50, 70, 90].into_iter())
+            );
         }
     }
     mod disjoint_set_hash_tests {
+        use std::collections::BTreeSet;
+
         use super::super::*;
 
         #[test]
@@ -332,6 +356,17 @@ mod tests {
                     assert_eq!(new.is_connected(a, b), Some(a % 20 == b % 20));
                 }
             }
+            let mut all_sets = new.all_sets();
+            all_sets.sort();
+            assert_eq!(all_sets.len(), 2);
+            assert_eq!(
+                BTreeSet::from_iter(all_sets[0].iter().copied()),
+                BTreeSet::from_iter(vec![0, 20, 40, 60, 80].into_iter())
+            );
+            assert_eq!(
+                BTreeSet::from_iter(all_sets[1].iter().copied()),
+                BTreeSet::from_iter(vec![10, 30, 50, 70, 90].into_iter())
+            );
         }
     }
 }
