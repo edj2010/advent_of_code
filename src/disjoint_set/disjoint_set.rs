@@ -3,10 +3,11 @@ use std::{
     hash::Hash,
 };
 
-pub trait DisjointSet<T> {
-    fn is_connected(&mut self, a: &T, b: &T) -> Option<bool>;
-    fn union(&mut self, a: &T, b: &T) -> Option<bool>;
+pub trait DisjointSet<T: Copy> {
+    fn is_connected(&mut self, a: T, b: T) -> Option<bool>;
+    fn union(&mut self, a: T, b: T) -> Option<bool>;
     fn size(&self) -> usize;
+    fn all_sets(&self) -> Vec<Vec<T>>;
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -57,13 +58,13 @@ impl DisjointUsizeSet {
 }
 
 impl DisjointSet<usize> for DisjointUsizeSet {
-    fn is_connected(&mut self, a: &usize, b: &usize) -> Option<bool> {
-        Some(self.find_root(*a)? == self.find_root(*b)?)
+    fn is_connected(&mut self, a: usize, b: usize) -> Option<bool> {
+        Some(self.find_root(a)? == self.find_root(b)?)
     }
 
-    fn union(&mut self, a: &usize, b: &usize) -> Option<bool> {
-        let root_a = self.find_root(*a)?;
-        let root_b = self.find_root(*b)?;
+    fn union(&mut self, a: usize, b: usize) -> Option<bool> {
+        let root_a = self.find_root(a)?;
+        let root_b = self.find_root(b)?;
         if root_a == root_b {
             return Some(false);
         }
@@ -81,11 +82,22 @@ impl DisjointSet<usize> for DisjointUsizeSet {
     fn size(&self) -> usize {
         self.nodes.len()
     }
+
+    fn all_sets(&self) -> Vec<Vec<usize>> {
+        let mut sets_by_parent_key: HashMap<usize, Vec<usize>> = HashMap::new();
+        for el in 0..self.size() {
+            sets_by_parent_key
+                .entry(self.nodes[el].parent)
+                .or_default()
+                .push(el);
+        }
+        sets_by_parent_key.into_values().collect()
+    }
 }
 
 pub struct DisjointBTreeSet<T>
 where
-    T: Ord,
+    T: Ord + Copy,
 {
     inner: DisjointUsizeSet,
     key_map: BTreeMap<T, usize>,
@@ -93,7 +105,7 @@ where
 
 impl<T> DisjointBTreeSet<T>
 where
-    T: Ord,
+    T: Ord + Copy,
 {
     pub fn empty() -> Self {
         DisjointBTreeSet {
@@ -114,25 +126,37 @@ where
 
 impl<T> DisjointSet<T> for DisjointBTreeSet<T>
 where
-    T: Ord,
+    T: Ord + Copy,
 {
-    fn is_connected(&mut self, a: &T, b: &T) -> Option<bool> {
+    fn is_connected(&mut self, a: T, b: T) -> Option<bool> {
         self.inner
-            .is_connected(self.key_map.get(a)?, self.key_map.get(b)?)
+            .is_connected(*self.key_map.get(&a)?, *self.key_map.get(&b)?)
     }
 
     fn size(&self) -> usize {
         self.inner.size()
     }
 
-    fn union(&mut self, a: &T, b: &T) -> Option<bool> {
-        self.inner.union(self.key_map.get(a)?, self.key_map.get(b)?)
+    fn union(&mut self, a: T, b: T) -> Option<bool> {
+        self.inner
+            .union(*self.key_map.get(&a)?, *self.key_map.get(&b)?)
+    }
+
+    fn all_sets(&self) -> Vec<Vec<T>> {
+        let mut sets_by_parent_key: HashMap<usize, Vec<T>> = HashMap::new();
+        for (&el, &key) in self.key_map.iter() {
+            sets_by_parent_key
+                .entry(self.inner.nodes[key].parent)
+                .or_default()
+                .push(el);
+        }
+        sets_by_parent_key.into_values().collect()
     }
 }
 
 pub struct DisjointHashSet<T>
 where
-    T: Hash + Eq,
+    T: Hash + Eq + Copy,
 {
     inner: DisjointUsizeSet,
     key_map: HashMap<T, usize>,
@@ -140,7 +164,7 @@ where
 
 impl<T> DisjointHashSet<T>
 where
-    T: Hash + Eq,
+    T: Hash + Eq + Copy,
 {
     pub fn empty() -> Self {
         DisjointHashSet {
@@ -161,19 +185,31 @@ where
 
 impl<T> DisjointSet<T> for DisjointHashSet<T>
 where
-    T: Hash + Eq,
+    T: Hash + Eq + Copy,
 {
-    fn is_connected(&mut self, a: &T, b: &T) -> Option<bool> {
+    fn is_connected(&mut self, a: T, b: T) -> Option<bool> {
         self.inner
-            .is_connected(self.key_map.get(a)?, self.key_map.get(b)?)
+            .is_connected(*self.key_map.get(&a)?, *self.key_map.get(&b)?)
     }
 
     fn size(&self) -> usize {
         self.inner.size()
     }
 
-    fn union(&mut self, a: &T, b: &T) -> Option<bool> {
-        self.inner.union(self.key_map.get(a)?, self.key_map.get(b)?)
+    fn union(&mut self, a: T, b: T) -> Option<bool> {
+        self.inner
+            .union(*self.key_map.get(&a)?, *self.key_map.get(&b)?)
+    }
+
+    fn all_sets(&self) -> Vec<Vec<T>> {
+        let mut sets_by_parent_key: HashMap<usize, Vec<T>> = HashMap::new();
+        for (&el, &key) in self.key_map.iter() {
+            sets_by_parent_key
+                .entry(self.inner.nodes[key].parent)
+                .or_default()
+                .push(el);
+        }
+        sets_by_parent_key.into_values().collect()
     }
 }
 
@@ -212,11 +248,11 @@ mod tests {
         fn two_sets() {
             let mut new = DisjointUsizeSet::init(10);
             for el in 2..10 {
-                new.union(&el, &(el - 2));
+                new.union(el, el - 2);
             }
             for a in 0..10 {
                 for b in 0..10 {
-                    assert_eq!(new.is_connected(&a, &b), Some(a % 2 == b % 2));
+                    assert_eq!(new.is_connected(a, b), Some(a % 2 == b % 2));
                 }
             }
         }
@@ -239,7 +275,7 @@ mod tests {
             assert_eq!(new.size(), 10);
             for a in (0..100).step_by(10) {
                 for b in (0..100).step_by(10) {
-                    assert_eq!(new.is_connected(&a, &b), Some(a == b));
+                    assert_eq!(new.is_connected(a, b), Some(a == b));
                 }
             }
         }
@@ -251,11 +287,11 @@ mod tests {
                 new.insert(el);
             }
             for el in (20..100).step_by(10) {
-                new.union(&el, &(el - 20));
+                new.union(el, el - 20);
             }
             for a in (0..100).step_by(10) {
                 for b in (0..100).step_by(10) {
-                    assert_eq!(new.is_connected(&a, &b), Some(a % 20 == b % 20));
+                    assert_eq!(new.is_connected(a, b), Some(a % 20 == b % 20));
                 }
             }
         }
@@ -277,7 +313,7 @@ mod tests {
             assert_eq!(new.size(), 10);
             for a in (0..100).step_by(10) {
                 for b in (0..100).step_by(10) {
-                    assert_eq!(new.is_connected(&a, &b), Some(a == b));
+                    assert_eq!(new.is_connected(a, b), Some(a == b));
                 }
             }
         }
@@ -289,11 +325,11 @@ mod tests {
                 new.insert(el);
             }
             for el in (20..100).step_by(10) {
-                new.union(&el, &(el - 20));
+                new.union(el, el - 20);
             }
             for a in (0..100).step_by(10) {
                 for b in (0..100).step_by(10) {
-                    assert_eq!(new.is_connected(&a, &b), Some(a % 20 == b % 20));
+                    assert_eq!(new.is_connected(a, b), Some(a % 20 == b % 20));
                 }
             }
         }
