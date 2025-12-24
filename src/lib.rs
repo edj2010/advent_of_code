@@ -8,6 +8,7 @@
 
 pub mod day;
 pub mod difference_sequence;
+pub mod disjoint_set;
 pub mod grid;
 pub mod hash;
 pub mod interval;
