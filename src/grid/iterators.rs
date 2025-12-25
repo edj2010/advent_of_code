@@ -50,7 +50,7 @@ impl grid_point::GridPoint<usize> {
     pub fn traverse_to(self, other: Self) -> Option<GridPointIterator<usize, isize>> {
         Some(GridPointIterator {
             next: Some(self),
-            traverse_by: other.sub(self)?.min_step(),
+            traverse_by: other.sub::<isize>(self)?.min_step(),
             grid_dimensions: grid_dimension::GridDimensions::<usize>::of_points_inclusive(
                 self, other,
             ),
@@ -62,7 +62,7 @@ impl grid_point::GridPoint<isize> {
     pub fn traverse_to(self, other: Self) -> Option<GridPointIterator<isize, isize>> {
         Some(GridPointIterator {
             next: Some(self),
-            traverse_by: other.sub(self)?.min_step(),
+            traverse_by: other.sub::<isize>(self)?.min_step(),
             grid_dimensions: grid_dimension::GridDimensions::<isize>::of_points_inclusive(
                 self, other,
             ),

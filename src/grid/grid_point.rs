@@ -239,24 +239,6 @@ impl<T> GridPointDelta<T> {
     }
 }
 
-impl GridPointDelta<isize> {
-    pub fn l1_norm(self) -> isize {
-        self.row_delta.abs() + self.col_delta.abs()
-    }
-}
-
-impl GridPointDelta<i32> {
-    pub fn l1_norm(self) -> i32 {
-        self.row_delta.abs() + self.col_delta.abs()
-    }
-}
-
-impl GridPointDelta<i64> {
-    pub fn l1_norm(self) -> i64 {
-        self.row_delta.abs() + self.col_delta.abs()
-    }
-}
-
 fn gcd<T>(a: T, b: T) -> T
 where
     T: Default + Ord + Neg<Output = T> + Rem<T, Output = T> + Copy,
@@ -269,23 +251,6 @@ where
         a
     } else {
         gcd(b, a % b)
-    }
-}
-
-impl GridPointDelta<isize> {
-    pub fn zero() -> Self {
-        GridPointDelta {
-            row_delta: 0,
-            col_delta: 0,
-        }
-    }
-
-    pub fn min_step(self) -> Self {
-        let div = gcd(self.row_delta, self.col_delta);
-        GridPointDelta {
-            row_delta: self.row_delta / div,
-            col_delta: self.col_delta / div,
-        }
     }
 }
 
@@ -330,3 +295,35 @@ where
         }
     }
 }
+
+macro_rules! grid_point_delta_impl {
+    ($integer:ty) => {
+        impl GridPointDelta<$integer> {
+            pub fn l1_norm(self) -> $integer {
+                self.row_delta.abs() + self.col_delta.abs()
+            }
+
+            pub fn zero() -> Self {
+                GridPointDelta {
+                    row_delta: 0,
+                    col_delta: 0,
+                }
+            }
+
+            pub fn min_step(self) -> Self {
+                let div = gcd(self.row_delta, self.col_delta);
+                GridPointDelta {
+                    row_delta: self.row_delta / div,
+                    col_delta: self.col_delta / div,
+                }
+            }
+        }
+    };
+}
+
+grid_point_delta_impl!(i8);
+grid_point_delta_impl!(i16);
+grid_point_delta_impl!(i32);
+grid_point_delta_impl!(i64);
+grid_point_delta_impl!(i128);
+grid_point_delta_impl!(isize);
